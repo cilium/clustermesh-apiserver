@@ -1,0 +1,45 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: clustermesh-apiserver
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: clustermesh-apiserver
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cilium.io
+  resources:
+  - ciliumnodes
+  - ciliumnodes/status
+  - ciliumidentities
+  - ciliumidentities/status
+  - ciliumendpoints
+  - ciliumendpoints/status
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: clustermesh-apiserver
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: clustermesh-apiserver
+subjects:
+- kind: ServiceAccount
+  name: clustermesh-apiserver
+  namespace: kube-system
