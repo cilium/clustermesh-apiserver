@@ -147,6 +147,12 @@ const (
 	// Port is a L4 port
 	Port = "port"
 
+	// PortName is a k8s ContainerPort Name
+	PortName = "portName"
+
+	// NamedPorts is a set of named ports
+	NamedPorts = "namedPorts"
+
 	// Family is the L3 protocol family
 	Family = "family"
 
@@ -158,6 +164,12 @@ const (
 
 	// V6Prefix is a IPv6 subnet/CIDR prefix
 	V6Prefix = "v6Prefix"
+
+	// CIDR is a IPv4/IPv4 subnet/CIDR
+	CIDR = "cidr"
+
+	// MTU is the maximum transmission unit of one interface
+	MTU = "mtu"
 
 	// Interface is an interface id/name on the system
 	Interface = "interface"
@@ -182,6 +194,16 @@ const (
 
 	// ServiceNamespace is the orchestration framework namespace of a service name
 	ServiceNamespace = "serviceNamespace"
+
+	// SessionAffinity indicates whether the ClientIP session affinity is enabled
+	// for the service
+	SessionAffinity = "sessionAffinity"
+
+	// SessionAffinityTimeout is a timeout for the session affinity
+	SessionAffinityTimeout = "sessionAffinityTimeout"
+
+	// LoadBalancerSourceRanges is the LB SVC source ranges
+	LoadBalancerSourceRanges = "loadBalancerSourceRanges"
 
 	// ClusterName is the name of the cluster
 	ClusterName = "clusterName"
@@ -219,8 +241,8 @@ const (
 	// BackendName is the name of the backend
 	BackendName = "backendName"
 
-	// SlaveSlot is the slot number in a service BPF map
-	SlaveSlot = "slaveSlot"
+	// BackendSlot is the backend slot number in a service BPF map
+	BackendSlot = "backendSlot"
 
 	// CiliumNetworkPolicy is a cilium specific NetworkPolicy
 	CiliumNetworkPolicy = "ciliumNetworkPolicy"
@@ -239,6 +261,12 @@ const (
 
 	// Device is the device name
 	Device = "device"
+
+	// Devices is the devices name
+	Devices = "devices"
+
+	//DirectRoutingDevice is the name of the direct routing device
+	DirectRoutingDevice = "directRoutingDevice"
 
 	// IpvlanMasterDevice is the ipvlan master device name
 	IpvlanMasterDevice = "ipvlanMasterDevice"
@@ -316,6 +344,9 @@ const (
 	// XDSResource is an xDS resource message.
 	XDSResource = "xdsResource"
 
+	// XDSDetail is detail string included in XDS NACKs.
+	XDSDetail = "xdsDetail"
+
 	// K8s-specific
 
 	// K8sNodeID is the k8s ID of a K8sNode
@@ -353,6 +384,9 @@ const (
 
 	// K8sAPIVersion is the version of the k8s API an object has
 	K8sAPIVersion = "k8sApiVersion"
+
+	// K8sNodeIP is the k8s Node IP (either InternalIP or ExternalIP)
+	K8sNodeIP = "k8sNodeIP"
 
 	// Attempt is the attempt number if an operation is attempted multiple times
 	Attempt = "attempt"

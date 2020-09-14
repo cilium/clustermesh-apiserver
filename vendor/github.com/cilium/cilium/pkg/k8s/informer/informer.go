@@ -1,4 +1,4 @@
-// Copyright 2019 Authors of Cilium
+// Copyright 2019-2020 Authors of Cilium
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,11 +15,36 @@
 package informer
 
 import (
+	"fmt"
+	"net/http"
 	"time"
 
-	"k8s.io/apimachinery/pkg/runtime"
+	"github.com/cilium/cilium/pkg/logging"
+	"github.com/cilium/cilium/pkg/logging/logfields"
+
+	k8sRuntime "k8s.io/apimachinery/pkg/runtime"
+	utilRuntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 )
+
+var log = logging.DefaultLogger.WithField(logfields.LogSubsys, "k8s")
+
+func init() {
+	utilRuntime.PanicHandlers = append(
+		utilRuntime.PanicHandlers,
+		func(r interface{}) {
+			// from k8s library
+			if r == http.ErrAbortHandler {
+				// honor the http.ErrAbortHandler sentinel panic value:
+				//   ErrAbortHandler is a sentinel panic value to abort a handler.
+				//   While any panic from ServeHTTP aborts the response to the client,
+				//   panicking with ErrAbortHandler also suppresses logging of a stack trace to the server's error log.
+				return
+			}
+			log.Fatal("Panic in Kubernetes runtime handler")
+		},
+	)
+}
 
 type ConvertFunc func(obj interface{}) interface{}
 
@@ -28,7 +53,7 @@ type ConvertFunc func(obj interface{}) interface{}
 // the local cache.
 func NewInformer(
 	lw cache.ListerWatcher,
-	objType runtime.Object,
+	objType k8sRuntime.Object,
 	resyncPeriod time.Duration,
 	h cache.ResourceEventHandler,
 	convertFunc ConvertFunc,
@@ -43,7 +68,7 @@ func NewInformer(
 // caller can also set a cache.Store.
 func NewInformerWithStore(
 	lw cache.ListerWatcher,
-	objType runtime.Object,
+	objType k8sRuntime.Object,
 	resyncPeriod time.Duration,
 	h cache.ResourceEventHandler,
 	convertFunc ConvertFunc,
@@ -54,6 +79,8 @@ func NewInformerWithStore(
 	// KeyLister, that way resync operations will result in the correct set
 	// of update/delete deltas.
 	fifo := cache.NewDeltaFIFO(cache.MetaNamespaceKeyFunc, clientState)
+
+	cacheMutationDetector := cache.NewCacheMutationDetector(fmt.Sprintf("%T", objType))
 
 	cfg := &cache.Config{
 		Queue:            fifo,
@@ -66,7 +93,16 @@ func NewInformerWithStore(
 			// from oldest to newest
 			for _, d := range obj.(cache.Deltas) {
 
-				obj := convertFunc(d.Object)
+				var obj interface{}
+				if convertFunc != nil {
+					obj = convertFunc(d.Object)
+				} else {
+					obj = d.Object
+				}
+
+				// In CI we detect if the objects were modified and panic
+				// this is a no-op in production environments.
+				cacheMutationDetector.AddObject(obj)
 
 				switch d.Type {
 				case cache.Sync, cache.Added, cache.Updated:

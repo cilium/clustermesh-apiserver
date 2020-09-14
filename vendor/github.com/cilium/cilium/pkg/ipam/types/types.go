@@ -84,6 +84,14 @@ type IPAMSpec struct {
 	// +optional
 	MinAllocate int `json:"min-allocate,omitempty"`
 
+	// MaxAllocate is the maximum number of IPs that can be allocated to the
+	// node. When the current amount of allocated IPs will approach this value,
+	// the considered value for PreAllocate will decrease down to 0 in order to
+	// not attempt to allocate more addresses than defined.
+	//
+	// +optional
+	MaxAllocate int `json:"max-allocate,omitempty"`
+
 	// PreAllocate defines the number of IP addresses that must be
 	// available for allocation in the IPAMspec. It defines the buffer of
 	// addresses available immediately without requiring cilium-operator to
@@ -112,6 +120,20 @@ type IPAMStatus struct {
 	//
 	// +optional
 	Used AllocationMap `json:"used,omitempty"`
+
+	// Operator is the Operator status of the node
+	//
+	// +optional
+	OperatorStatus OperatorStatus `json:"operator-status,omitempty"`
+}
+
+// OperatorStatus is the status used by cilium-operator to report
+// errors in case the allocation CIDR failed.
+type OperatorStatus struct {
+	// Error is the error message set by cilium-operator.
+	//
+	// +optional
+	Error string `json:"error,omitempty"`
 }
 
 // Tags implements generic key value tags
@@ -211,6 +233,8 @@ type PoolQuota struct {
 type PoolQuotaMap map[PoolID]PoolQuota
 
 // Interface is the implementation of a IPAM relevant network interface
+// +k8s:deepcopy-gen=false
+// +deepequal-gen=false
 type Interface interface {
 	// InterfaceID must return the identifier of the interface
 	InterfaceID() string
@@ -225,6 +249,7 @@ type Interface interface {
 // and the resource itself.
 //
 // +k8s:deepcopy-gen=false
+// +deepequal-gen=false
 type InterfaceRevision struct {
 	// Resource is the interface resource
 	Resource Interface
@@ -240,6 +265,7 @@ type InterfaceRevision struct {
 // per-node IPAM logic
 //
 // +k8s:deepcopy-gen=false
+// +deepequal-gen=false
 type Instance struct {
 	// interfaces is a map of all interfaces attached to the instance
 	// indexed by the interface ID
@@ -249,6 +275,7 @@ type Instance struct {
 // InstanceMap is the list of all instances indexed by instance ID
 //
 // +k8s:deepcopy-gen=false
+// +deepequal-gen=false
 type InstanceMap struct {
 	mutex lock.RWMutex
 	data  map[string]*Instance

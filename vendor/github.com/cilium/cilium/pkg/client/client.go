@@ -15,6 +15,7 @@
 package client
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -32,7 +33,6 @@ import (
 
 	runtime_client "github.com/go-openapi/runtime/client"
 	"github.com/go-openapi/strfmt"
-	"golang.org/x/net/context"
 )
 
 type Client struct {
@@ -286,8 +286,24 @@ func FormatStatusResponse(w io.Writer, sr *models.StatusResponse, allAddresses, 
 					strings.Join(hs.Protocols, ", ")))
 			}
 
-			fmt.Fprintf(w, "KubeProxyReplacement:\t%s\t[%s]\n",
-				sr.KubeProxyReplacement.Mode, strings.Join(features, ", "))
+			if sr.KubeProxyReplacement.Features.SessionAffinity.Enabled {
+				features = append(features, "SessionAffinity")
+			}
+
+			devices := ""
+			for i, dev := range sr.KubeProxyReplacement.Devices {
+				devices += dev
+				if dev == sr.KubeProxyReplacement.DirectRoutingDevice {
+					devices += " (DR)"
+				}
+				if i+1 != len(sr.KubeProxyReplacement.Devices) {
+					devices += ", "
+				}
+
+			}
+
+			fmt.Fprintf(w, "KubeProxyReplacement:\t%s\t[%s]\t[%s]\n",
+				sr.KubeProxyReplacement.Mode, devices, strings.Join(features, ", "))
 		}
 	}
 	if sr.Cilium != nil {
@@ -347,12 +363,35 @@ func FormatStatusResponse(w io.Writer, sr *models.StatusResponse, allAddresses, 
 
 		for _, cluster := range sr.ClusterMesh.Clusters {
 			if allClusters || !cluster.Ready {
-				fmt.Fprintf(w, "   %s: %s, %d nodes, %d identities, %d services\n",
+				fmt.Fprintf(w, "   %s: %s, %d nodes, %d identities, %d services, %d failures (last: %s)\n",
 					cluster.Name, clusterReadiness(cluster), cluster.NumNodes,
-					cluster.NumIdentities, cluster.NumSharedServices)
+					cluster.NumIdentities, cluster.NumSharedServices,
+					cluster.NumFailures, timeSince(time.Time(cluster.LastFailure)))
 				fmt.Fprintf(w, "   └  %s\n", cluster.Status)
 			}
 		}
+	}
+
+	if sr.Masquerading != nil {
+		var status string
+		if !sr.Masquerading.Enabled {
+			status = "Disabled"
+		} else if sr.Masquerading.Mode == models.MasqueradingModeBPF {
+			if sr.Masquerading.IPMasqAgent {
+				status = "BPF (ip-masq-agent)"
+			} else {
+				status = "BPF"
+			}
+			if sr.KubeProxyReplacement != nil {
+				status += fmt.Sprintf("\t[%s]\t%s",
+					strings.Join(sr.KubeProxyReplacement.Devices, ", "),
+					sr.Masquerading.SnatExclusionCidr)
+			}
+
+		} else if sr.Masquerading.Mode == models.MasqueradingModeIptables {
+			status = "IPTables"
+		}
+		fmt.Fprintf(w, "Masquerading:\t%s\n", status)
 	}
 
 	if sr.Controllers != nil {

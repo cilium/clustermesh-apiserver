@@ -21,18 +21,17 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/tools/cache"
-
 	"github.com/cilium/cilium/pkg/ip"
-	"github.com/cilium/cilium/pkg/k8s/types"
+	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1"
+	slim_discover_v1beta1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/discovery/v1beta1"
 	"github.com/cilium/cilium/pkg/k8s/version"
 	"github.com/cilium/cilium/pkg/loadbalancer"
 	"github.com/cilium/cilium/pkg/option"
 	serviceStore "github.com/cilium/cilium/pkg/service/store"
 
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/api/discovery/v1beta1"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Endpoints is an abstraction for the Kubernetes endpoints object. Endpoints
@@ -137,7 +136,7 @@ func (e *Endpoints) CIDRPrefixes() ([]*net.IPNet, error) {
 }
 
 // ParseEndpointsID parses a Kubernetes endpoints and returns the ServiceID
-func ParseEndpointsID(svc *types.Endpoints) ServiceID {
+func ParseEndpointsID(svc *slim_corev1.Endpoints) ServiceID {
 	return ServiceID{
 		Name:      svc.ObjectMeta.Name,
 		Namespace: svc.ObjectMeta.Namespace,
@@ -145,7 +144,7 @@ func ParseEndpointsID(svc *types.Endpoints) ServiceID {
 }
 
 // ParseEndpoints parses a Kubernetes Endpoints resource
-func ParseEndpoints(ep *types.Endpoints) (ServiceID, *Endpoints) {
+func ParseEndpoints(ep *slim_corev1.Endpoints) (ServiceID, *Endpoints) {
 	endpoints := newEndpoints()
 
 	for _, sub := range ep.Subsets {
@@ -170,17 +169,20 @@ func ParseEndpoints(ep *types.Endpoints) (ServiceID, *Endpoints) {
 	return ParseEndpointsID(ep), endpoints
 }
 
-// ParseEndpointSliceID parses a Kubernetes endpoints slice and returns the
-// ServiceID
-func ParseEndpointSliceID(svc *types.EndpointSlice) ServiceID {
-	return ServiceID{
-		Name:      svc.ObjectMeta.GetLabels()[v1beta1.LabelServiceName],
-		Namespace: svc.ObjectMeta.Namespace,
+// ParseEndpointSliceID parses a Kubernetes endpoints slice and returns a
+// EndpointSliceID
+func ParseEndpointSliceID(es *slim_discover_v1beta1.EndpointSlice) EndpointSliceID {
+	return EndpointSliceID{
+		ServiceID: ServiceID{
+			Name:      es.ObjectMeta.GetLabels()[v1beta1.LabelServiceName],
+			Namespace: es.ObjectMeta.Namespace,
+		},
+		EndpointSliceName: es.ObjectMeta.GetName(),
 	}
 }
 
 // ParseEndpointSlice parses a Kubernetes Endpoints resource
-func ParseEndpointSlice(ep *types.EndpointSlice) (ServiceID, *Endpoints) {
+func ParseEndpointSlice(ep *slim_discover_v1beta1.EndpointSlice) (EndpointSliceID, *Endpoints) {
 	endpoints := newEndpoints()
 
 	for _, sub := range ep.Endpoints {
@@ -216,13 +218,13 @@ func ParseEndpointSlice(ep *types.EndpointSlice) (ServiceID, *Endpoints) {
 
 // parseEndpointPort returns the port name and the port parsed as a L4Addr from
 // the given port.
-func parseEndpointPort(port v1beta1.EndpointPort) (string, *loadbalancer.L4Addr) {
+func parseEndpointPort(port slim_discover_v1beta1.EndpointPort) (string, *loadbalancer.L4Addr) {
 	proto := loadbalancer.TCP
 	if port.Protocol != nil {
 		switch *port.Protocol {
-		case v1.ProtocolTCP:
+		case slim_corev1.ProtocolTCP:
 			proto = loadbalancer.TCP
-		case v1.ProtocolUDP:
+		case slim_corev1.ProtocolUDP:
 			proto = loadbalancer.UDP
 		default:
 			return "", nil
@@ -237,6 +239,57 @@ func parseEndpointPort(port v1beta1.EndpointPort) (string, *loadbalancer.L4Addr)
 	}
 	lbPort := loadbalancer.NewL4Addr(proto, uint16(*port.Port))
 	return name, lbPort
+}
+
+// endpointSlices is the collection of all endpoint slices of a service.
+// The map key is the name of the endpoint slice or the name of the legacy
+// v1.Endpoint. The endpoints stored here are not namespaced since this
+// structure is only used as a value of another map that is already namespaced.
+// (see ServiceCache.endpoints).
+type endpointSlices struct {
+	epSlices map[string]*Endpoints
+}
+
+// newEndpointsSlices returns a new endpointSlices
+func newEndpointsSlices() *endpointSlices {
+	return &endpointSlices{
+		epSlices: map[string]*Endpoints{},
+	}
+}
+
+// GetEndpoints returns a read only a single *Endpoints structure with all
+// Endpoints' backends joined.
+func (es *endpointSlices) GetEndpoints() *Endpoints {
+	if es == nil || len(es.epSlices) == 0 {
+		return nil
+	}
+	allEps := newEndpoints()
+	for _, eps := range es.epSlices {
+		for backend, ep := range eps.Backends {
+			allEps.Backends[backend] = ep
+		}
+	}
+	return allEps
+}
+
+// Upsert maps the 'esname' to 'e'.
+// - 'esName': Name of the Endpoint Slice
+// - 'e': Endpoints to store in the map
+func (es *endpointSlices) Upsert(esName string, e *Endpoints) {
+	if es == nil {
+		panic("BUG: endpointSlices is nil")
+	}
+	es.epSlices[esName] = e
+}
+
+// Delete deletes the endpoint slice in the internal map. Returns true if there
+// are not any more endpoints available in the map.
+func (es *endpointSlices) Delete(esName string) bool {
+	if es == nil || len(es.epSlices) == 0 {
+		return true
+	}
+	delete(es.epSlices, esName)
+	return len(es.epSlices) == 0
 }
 
 // externalEndpoints is the collection of external endpoints in all remote

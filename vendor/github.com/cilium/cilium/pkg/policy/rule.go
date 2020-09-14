@@ -1,4 +1,4 @@
-// Copyright 2016-2019 Authors of Cilium
+// Copyright 2016-2020 Authors of Cilium
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,12 +19,11 @@ import (
 	"fmt"
 
 	"github.com/cilium/cilium/pkg/identity"
+	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/policy/api"
-
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type rule struct {
@@ -56,6 +55,13 @@ func (m *ruleMetadata) delete(identity *identity.Identity) {
 
 func (r *rule) String() string {
 	return fmt.Sprintf("%v", r.EndpointSelector)
+}
+
+func (r *rule) getSelector() *api.EndpointSelector {
+	if r.NodeSelector.LabelSelector != nil {
+		return &r.NodeSelector
+	}
+	return &r.EndpointSelector
 }
 
 func (epd *PerSelectorPolicy) appendL7WildcardRule(ctx *SearchContext) *PerSelectorPolicy {
@@ -232,12 +238,12 @@ func mergePortProto(ctx *SearchContext, existingFilter, filterToMerge *L4Filter,
 // being merged has conflicting L7 rules with those already in the provided
 // L4PolicyMap for the specified port-protocol tuple, it returns an error.
 //
-// If any rules contain L7 rules that select Host and we should accept
-// all traffic from host (hostWildcardL7 == true) the L7 rules will be
-// translated into L7 wildcards (ie, traffic will be forwarded to the
-// proxy for endpoints matching those labels, but the proxy will allow
-// all such traffic).
-func mergeIngressPortProto(policyCtx PolicyContext, ctx *SearchContext, endpoints api.EndpointSelectorSlice, hostWildcardL7 bool,
+// If any rules contain L7 rules that select Host or Remote Node and we should
+// accept all traffic from host, the L7 rules will be translated into L7
+// wildcards via 'hostWildcardL7'. That is to say, traffic will be
+// forwarded to the proxy for endpoints matching those labels, but the proxy
+// will allow all such traffic.
+func mergeIngressPortProto(policyCtx PolicyContext, ctx *SearchContext, endpoints api.EndpointSelectorSlice, hostWildcardL7 []string,
 	r api.PortRule, p api.PortProtocol, proto api.L4Proto, ruleLabels labels.LabelArray, resMap L4PolicyMap) (int, error) {
 	// Create a new L4Filter
 	filterToMerge, err := createL4IngressFilter(policyCtx, endpoints, hostWildcardL7, r, p, proto, ruleLabels)
@@ -297,8 +303,12 @@ func rulePortsCoverSearchContext(ports []api.PortProtocol, ctx *SearchContext) b
 	for _, p := range ports {
 		for _, dp := range ctx.DPorts {
 			tracePort := api.PortProtocol{
-				Port:     fmt.Sprintf("%d", dp.Port),
 				Protocol: api.L4Proto(dp.Protocol),
+			}
+			if dp.Name != "" {
+				tracePort.Port = dp.Name
+			} else {
+				tracePort.Port = fmt.Sprintf("%d", dp.Port)
 			}
 			if p.Covers(tracePort) {
 				return true
@@ -327,7 +337,13 @@ func mergeIngress(policyCtx PolicyContext, ctx *SearchContext, fromEndpoints api
 	// restrictions on these endpoints into L7 allow-all so that the
 	// traffic is always allowed, but is also always redirected through the
 	// proxy
-	hostWildcardL7 := option.Config.AlwaysAllowLocalhost()
+	hostWildcardL7 := make([]string, 0, 2)
+	if option.Config.AlwaysAllowLocalhost() {
+		hostWildcardL7 = append(hostWildcardL7, labels.IDNameHost)
+		if !option.Config.EnableRemoteNodeIdentity {
+			hostWildcardL7 = append(hostWildcardL7, labels.IDNameRemoteNode)
+		}
+	}
 
 	var (
 		cnt int
@@ -413,9 +429,9 @@ func (state *traceState) unSelectRule(ctx *SearchContext, labels labels.LabelArr
 // other rules are stored in the specified slice of LabelSelectorRequirement.
 // These requirements are dynamically inserted into a copy of the receiver rule,
 // as requirements form conjunctions across all rules.
-func (r *rule) resolveIngressPolicy(policyCtx PolicyContext, ctx *SearchContext, state *traceState, result L4PolicyMap, requirements []v1.LabelSelectorRequirement) (L4PolicyMap, error) {
+func (r *rule) resolveIngressPolicy(policyCtx PolicyContext, ctx *SearchContext, state *traceState, result L4PolicyMap, requirements []slim_metav1.LabelSelectorRequirement) (L4PolicyMap, error) {
 	if !ctx.rulesSelect {
-		if !r.EndpointSelector.Matches(ctx.To) {
+		if !r.getSelector().Matches(ctx.To) {
 			state.unSelectRule(ctx, ctx.To, r)
 			return nil, nil
 		}
@@ -469,7 +485,7 @@ func mergeCIDR(ctx *SearchContext, dir string, ipRules []api.CIDR, ruleLabels la
 func (r *rule) resolveCIDRPolicy(ctx *SearchContext, state *traceState, result *CIDRPolicy) *CIDRPolicy {
 	// Don't select rule if it doesn't apply to the given context.
 	if !ctx.rulesSelect {
-		if !r.EndpointSelector.Matches(ctx.To) {
+		if !r.getSelector().Matches(ctx.To) {
 			state.unSelectRule(ctx, ctx.To, r)
 			return nil
 		}
@@ -529,8 +545,13 @@ func (r *rule) matches(securityIdentity *identity.Identity) bool {
 	if ruleMatches, cached := r.metadata.IdentitySelected[securityIdentity.ID]; cached {
 		return ruleMatches
 	}
+	isNode := securityIdentity.ID == identity.ReservedIdentityHost
+	if (r.NodeSelector.LabelSelector != nil) != isNode {
+		r.metadata.IdentitySelected[securityIdentity.ID] = false
+		return ruleMatches
+	}
 	// Fall back to costly matching.
-	if ruleMatches = r.EndpointSelector.Matches(securityIdentity.LabelArray); ruleMatches {
+	if ruleMatches = r.getSelector().Matches(securityIdentity.LabelArray); ruleMatches {
 		// Update cache so we don't have to do costly matching again.
 		r.metadata.IdentitySelected[securityIdentity.ID] = true
 	} else {
@@ -650,9 +671,9 @@ func mergeEgressPortProto(policyCtx PolicyContext, ctx *SearchContext, endpoints
 	return 1, nil
 }
 
-func (r *rule) resolveEgressPolicy(policyCtx PolicyContext, ctx *SearchContext, state *traceState, result L4PolicyMap, requirements []v1.LabelSelectorRequirement) (L4PolicyMap, error) {
+func (r *rule) resolveEgressPolicy(policyCtx PolicyContext, ctx *SearchContext, state *traceState, result L4PolicyMap, requirements []slim_metav1.LabelSelectorRequirement) (L4PolicyMap, error) {
 	if !ctx.rulesSelect {
-		if !r.EndpointSelector.Matches(ctx.From) {
+		if !r.getSelector().Matches(ctx.From) {
 			state.unSelectRule(ctx, ctx.From, r)
 			return nil, nil
 		}

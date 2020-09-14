@@ -17,7 +17,7 @@ package api
 import (
 	"context"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 )
 
 // EgressRule contains all rule types which can be applied at egress, i.e.
@@ -27,10 +27,14 @@ import (
 // - All members of this structure are optional. If omitted or empty, the
 //   member will have no effect on the rule.
 //
-// - For now, combining ToPorts and ToCIDR in the same rule is not supported
-//   and such rules will be rejected. In the future, this will be supported and
-//   if if multiple members of the structure are specified, then all members
-//   must match in order for the rule to take effect.
+// - If multiple members of the structure are specified, then all members
+//   must match in order for the rule to take effect. The exception to this
+//   rule is the ToRequires member; the effects of any Requires field in any
+//   rule will apply to all other rules as well.
+//
+// - ToEndpoints, ToCIDR, ToCIDRSet, ToEntities, ToServices and ToGroups are
+//   mutually exclusive. Only one of these members may be present within an
+//   individual rule.
 type EgressRule struct {
 	// ToEndpoints is a list of endpoints identified by an EndpointSelector to
 	// which the endpoints subject to the rule are allowed to communicate.
@@ -179,7 +183,7 @@ func (e *EgressRule) SetAggregatedSelectors() {
 
 // GetDestinationEndpointSelectorsWithRequirements returns a slice of endpoints selectors covering
 // all L3 source selectors of the ingress rule
-func (e *EgressRule) GetDestinationEndpointSelectorsWithRequirements(requirements []metav1.LabelSelectorRequirement) EndpointSelectorSlice {
+func (e *EgressRule) GetDestinationEndpointSelectorsWithRequirements(requirements []slim_metav1.LabelSelectorRequirement) EndpointSelectorSlice {
 	if e.aggregatedSelectors == nil {
 		e.SetAggregatedSelectors()
 	}

@@ -495,7 +495,7 @@ func (p *Repository) GetRulesMatching(lbls labels.LabelArray) (ingressMatch bool
 	ingressMatch = false
 	egressMatch = false
 	for _, r := range p.rules {
-		rulesMatch := r.EndpointSelector.Matches(lbls)
+		rulesMatch := r.getSelector().Matches(lbls)
 		if rulesMatch {
 			if len(r.Ingress) > 0 {
 				ingressMatch = true
@@ -522,6 +522,11 @@ func (p *Repository) getMatchingRules(securityIdentity *identity.Identity) (ingr
 	ingressMatch = false
 	egressMatch = false
 	for _, r := range p.rules {
+		isNode := securityIdentity.ID == identity.ReservedIdentityHost
+		selectsNode := r.NodeSelector.LabelSelector != nil
+		if selectsNode != isNode {
+			continue
+		}
 		if ruleMatches := r.matches(securityIdentity); ruleMatches {
 			// Don't need to update whether ingressMatch is true if it already
 			// has been determined to be true - allows us to not have to check
@@ -688,9 +693,12 @@ func (p *Repository) resolvePolicyLocked(securityIdentity *identity.Identity) (*
 //
 // Must be called with repo mutex held for reading.
 func (p *Repository) computePolicyEnforcementAndRules(securityIdentity *identity.Identity) (ingress bool, egress bool, matchingRules ruleSlice) {
-
 	lbls := securityIdentity.LabelArray
+
 	// Check if policy enforcement should be enabled at the daemon level.
+	if lbls.Has(labels.IDNameHost) && !option.Config.EnableHostFirewall {
+		return false, false, nil
+	}
 	switch GetPolicyEnabled() {
 	case option.AlwaysEnforce:
 		_, _, matchingRules = p.getMatchingRules(securityIdentity)

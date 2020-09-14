@@ -17,9 +17,11 @@ package datapath
 import (
 	"io"
 
-	"github.com/cilium/cilium/common/addressing"
+	"github.com/cilium/cilium/pkg/addressing"
+	"github.com/cilium/cilium/pkg/cidr"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/mac"
+	"github.com/cilium/cilium/pkg/node"
 	"github.com/cilium/cilium/pkg/option"
 )
 
@@ -46,6 +48,11 @@ type LoadTimeConfiguration interface {
 	StringID() string
 	// GetIdentity returns a globally-significant numeric security identity.
 	GetIdentity() identity.NumericIdentity
+
+	// GetIdentityLocked returns a globally-significant numeric security
+	// identity while assuming that the backing data structure is locked.
+	// This function should be removed in favour of GetIdentity()
+	GetIdentityLocked() identity.NumericIdentity
 
 	IPv4Address() addressing.CiliumIPv4
 	IPv6Address() addressing.CiliumIPv6
@@ -82,6 +89,9 @@ type CompileTimeConfiguration interface {
 
 	// GetPolicyVerdictLogFilter returns the PolicyVerdictLogFilter for the endpoint
 	GetPolicyVerdictLogFilter() uint32
+
+	// IsHost returns true if the endpoint is the host endpoint.
+	IsHost() bool
 }
 
 // EndpointConfiguration provides datapath implementations a clean interface
@@ -111,4 +121,16 @@ type ConfigWriter interface {
 	// WriteEndpointConfig writes the implementation-specific configuration
 	// of configurable options for the endpoint to the specified writer.
 	WriteEndpointConfig(w io.Writer, cfg EndpointConfiguration) error
+}
+
+// RemoteSNATDstAddrExclusionCIDR returns a CIDR for SNAT exclusion. Any
+// packet sent from a local endpoint to an IP address belonging to the CIDR
+// should not be SNAT'd.
+func RemoteSNATDstAddrExclusionCIDR() *cidr.CIDR {
+	if c := option.Config.IPv4NativeRoutingCIDR(); c != nil {
+		// native-routing-cidr is set, so use it
+		return c
+	}
+
+	return node.GetIPv4AllocRange()
 }
