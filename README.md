@@ -12,9 +12,9 @@
 3. Deploy the `clustermesh-apiserver` into the same namespace where Cilium is
    running:
 
-    kubectl -n kube-system create -f install/
+        kubectl -n kube-system create -f install/
 
-## Connect Cilium 
+## Connect Cilium
 
 1. Extract the IP and port of the `clustermesh-apiserver` service (Adjust the
    example based on the service type you are using):
@@ -54,15 +54,16 @@
 
 2. Add the following to the `Dockerfile` to the final stage:
 
-    ADD test/mock.json /mock.json
+        ADD test/mock.json /mock.json
 
 3. Add the following to the `args:` in `install/deployment.yaml`:
 
-    - --mock-file=/mock.json
+        - --mock-file=/mock.json
 
 4. Build & deploy
 
 ## Troubleshooting
 
+```
 kubectl exec -ti clustermesh-apiserver -c etcd -- etcdctl get --prefix=true cilium/
-
+```
