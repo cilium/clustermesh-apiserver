@@ -33,13 +33,15 @@ import (
 	"github.com/cilium/cilium/pkg/k8s"
 	ciliumv2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
 	clientset "github.com/cilium/cilium/pkg/k8s/client/clientset/versioned"
+	k8sconfig "github.com/cilium/cilium/pkg/k8s/config"
 	"github.com/cilium/cilium/pkg/k8s/informer"
+	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1"
 	"github.com/cilium/cilium/pkg/k8s/types"
 	"github.com/cilium/cilium/pkg/kvstore"
 	"github.com/cilium/cilium/pkg/kvstore/store"
 	"github.com/cilium/cilium/pkg/labels"
-	"github.com/cilium/cilium/pkg/node"
 	nodeStore "github.com/cilium/cilium/pkg/node/store"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	serviceStore "github.com/cilium/cilium/pkg/service/store"
 
 	gops "github.com/google/gops/agent"
@@ -98,7 +100,7 @@ func readMockFile(path string) error {
 
 		switch {
 		case strings.Contains(line, "\"CiliumIdentity\""):
-			var identity types.Identity
+			var identity ciliumv2.CiliumIdentity
 			err := json.Unmarshal([]byte(line), &identity)
 			if err != nil {
 				log.WithError(err).WithField("line", line).Warning("Unable to unmarshal CiliumIdentity")
@@ -122,7 +124,7 @@ func readMockFile(path string) error {
 				updateEndpoint(&endpoint)
 			}
 		case strings.Contains(line, "\"Service\""):
-			var service types.Service
+			var service slim_corev1.Service
 			err = json.Unmarshal([]byte(line), &service)
 			if err != nil {
 				log.WithError(err).WithField("line", line).Warning("Unable to unmarshal Service")
@@ -130,7 +132,7 @@ func readMockFile(path string) error {
 				serviceCache.UpdateService(&service, nil)
 			}
 		case strings.Contains(line, "\"Endpoints\""):
-			var endpoints types.Endpoints
+			var endpoints slim_corev1.Endpoints
 			err = json.Unmarshal([]byte(line), &endpoints)
 			if err != nil {
 				log.WithError(err).WithField("line", line).Warning("Unable to unmarshal Endpoints")
@@ -207,8 +209,16 @@ func startApi() {
 	log.Info("Started health API")
 }
 
+func parseLabelArrayFromMap(base map[string]string) labels.LabelArray {
+	array := make(labels.LabelArray, 0, len(base))
+	for sourceAndKey, value := range base {
+		array = append(array, labels.NewLabel(sourceAndKey, value, ""))
+	}
+	return array.Sort()
+}
+
 func updateIdentity(obj interface{}) {
-	identity, ok := obj.(*types.Identity)
+	identity, ok := obj.(*ciliumv2.CiliumIdentity)
 	if !ok {
 		log.Warningf("Unknown CiliumIdentity object type %s received: %+v", reflect.TypeOf(obj), obj)
 		return
@@ -220,7 +230,7 @@ func updateIdentity(obj interface{}) {
 	}
 
 	keyPath := path.Join(identityCache.IdentitiesPath, "id", identity.Name)
-	labelArray := labels.ParseLabelArrayFromMap(identity.SecurityLabels)
+	labelArray := parseLabelArrayFromMap(identity.SecurityLabels)
 
 	var key []byte
 	for _, l := range labelArray {
@@ -241,7 +251,7 @@ func updateIdentity(obj interface{}) {
 }
 
 func deleteIdentity(obj interface{}) {
-	identity, ok := obj.(*types.Identity)
+	identity, ok := obj.(*ciliumv2.CiliumIdentity)
 	if !ok {
 		log.Warningf("Unknown CiliumIdentity object type %s received: %+v", reflect.TypeOf(obj), obj)
 		return
@@ -280,7 +290,7 @@ func synchronizeIdentities() {
 				}
 			},
 		},
-		types.ConvertToIdentity,
+		nil,
 		identityStore,
 	)
 
@@ -293,7 +303,7 @@ func (n nodeStub) GetKeyName() string { return string(n) }
 
 func updateNode(obj interface{}) {
 	if ciliumNode, ok := obj.(*ciliumv2.CiliumNode); ok {
-		n := node.ParseCiliumNode(ciliumNode)
+		n := nodeTypes.ParseCiliumNode(ciliumNode)
 		n.Cluster = clusterName
 		n.ClusterID = clusterID
 		if err := ciliumNodeStore.UpdateLocalKeySync(context.Background(), &n); err != nil {
@@ -454,12 +464,12 @@ func handleServiceEvent(event k8s.ServiceEvent, store *store.SharedStore) {
 
 func synchronizeServices() {
 	updateService := func(obj interface{}) {
-		svc := k8s.CopyObjToV1Services(obj)
+		svc := k8s.ObjToV1Services(obj)
 		serviceCache.UpdateService(svc, nil)
 	}
 
 	deleteService := func(obj interface{}) {
-		svc := k8s.CopyObjToV1Services(obj)
+		svc := k8s.ObjToV1Services(obj)
 		serviceCache.DeleteService(svc, nil)
 	}
 
@@ -491,7 +501,7 @@ func synchronizeServices() {
 func runServer(cmd *cobra.Command) {
 	if mockFile == "" {
 		k8s.Configure("", "", 0.0, 0)
-		if err := k8s.Init(); err != nil {
+		if err := k8s.Init(k8sconfig.NewDefaultConfiguration()); err != nil {
 			log.WithError(err).Fatal("Unable to connect to Kubernetes apiserver")
 		}
 	}

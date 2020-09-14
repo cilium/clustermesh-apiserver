@@ -17,7 +17,11 @@ import (
 
 // Port Layer 4 port / protocol pair
 // swagger:model Port
+// +deepequal-gen=true
 type Port struct {
+
+	// Optional layer 4 port name
+	Name string `json:"name,omitempty"`
 
 	// Layer 4 port number
 	Port uint16 `json:"port,omitempty"`

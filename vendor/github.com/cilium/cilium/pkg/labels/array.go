@@ -59,15 +59,6 @@ func ParseLabelArrayFromArray(base []string) LabelArray {
 	return array.Sort()
 }
 
-// ParseLabelArrayFromMap creates a new LabelArray based on a map[string]string
-func ParseLabelArrayFromMap(base map[string]string) LabelArray {
-	array := make(LabelArray, 0, len(base))
-	for sourceAndKey, value := range base {
-		array = append(array, NewLabel(sourceAndKey, value, ""))
-	}
-	return array.Sort()
-}
-
 // NewLabelArrayFromSortedList returns labels based on the output of SortedList()
 // Trailing ';' will result in an empty key that must be filtered out.
 func NewLabelArrayFromSortedList(list string) LabelArray {
@@ -134,7 +125,8 @@ nextLabel:
 }
 
 // Has returns whether the provided key exists.
-// Implementation of the k8s.io/apimachinery/pkg/labels.Labels interface.
+// Implementation of the
+// github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/labels.Labels interface.
 func (ls LabelArray) Has(key string) bool {
 	// The key is submitted in the form of `source.key=value`
 	keyLabel := parseSelectLabel(key, '.')
@@ -156,7 +148,8 @@ func (ls LabelArray) Has(key string) bool {
 }
 
 // Get returns the value for the provided key.
-// Implementation of the k8s.io/apimachinery/pkg/labels.Labels interface.
+// Implementation of the
+// github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/labels.Labels interface.
 func (ls LabelArray) Get(key string) string {
 	keyLabel := parseSelectLabel(key, '.')
 	if keyLabel.IsAnySource() {

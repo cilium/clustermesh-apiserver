@@ -51,25 +51,28 @@ func newLocalKeys() *localKeys {
 // allocate creates an entry for key in localKeys if needed and increments the
 // refcnt. The value associated with the key must match the local cache or an
 // error is returned
-func (lk *localKeys) allocate(keyString string, key AllocatorKey, val idpool.ID) (idpool.ID, error) {
+func (lk *localKeys) allocate(keyString string, key AllocatorKey, val idpool.ID) (idpool.ID, bool, error) {
 	lk.Lock()
 	defer lk.Unlock()
 
+	var firstUse bool
+
 	if k, ok := lk.keys[keyString]; ok {
 		if val != k.val {
-			return idpool.NoID, fmt.Errorf("local key already allocated with different value (%s != %s)", val, k.val)
+			return idpool.NoID, firstUse, fmt.Errorf("local key already allocated with different value (%s != %s)", val, k.val)
 		}
 
 		k.refcnt++
 		kvstore.Trace("Incremented local key refcnt", nil, logrus.Fields{fieldKey: keyString, fieldID: val, fieldRefCnt: k.refcnt})
-		return k.val, nil
+		return k.val, firstUse, nil
 	}
 
+	firstUse = true
 	k := &localKey{key: key, val: val, refcnt: 1}
 	lk.keys[keyString] = k
 	lk.ids[val] = k
 	kvstore.Trace("New local key", nil, logrus.Fields{fieldKey: keyString, fieldID: val, fieldRefCnt: 1})
-	return val, nil
+	return val, firstUse, nil
 }
 
 func (lk *localKeys) verify(key string) error {
@@ -129,9 +132,10 @@ func (lk *localKeys) use(key string) idpool.ID {
 	return idpool.NoID
 }
 
-// release releases the refcnt of a key. When the last reference was released,
-// the key is deleted and the returned lastUse value is true.
-func (lk *localKeys) release(key string) (lastUse bool, err error) {
+// release releases the refcnt of a key. It returns the ID associated with the
+// given key. When the last reference was released, the key is deleted and the
+// returned lastUse value is true.
+func (lk *localKeys) release(key string) (lastUse bool, id idpool.ID, err error) {
 	lk.Lock()
 	defer lk.Unlock()
 	if k, ok := lk.keys[key]; ok {
@@ -140,13 +144,13 @@ func (lk *localKeys) release(key string) (lastUse bool, err error) {
 		if k.refcnt == 0 {
 			delete(lk.keys, key)
 			delete(lk.ids, k.val)
-			return true, nil
+			return true, k.val, nil
 		}
 
-		return false, nil
+		return false, k.val, nil
 	}
 
-	return false, fmt.Errorf("unable to find key in local cache")
+	return false, idpool.NoID, fmt.Errorf("unable to find key in local cache")
 }
 
 func (lk *localKeys) getVerifiedIDs() map[idpool.ID]AllocatorKey {

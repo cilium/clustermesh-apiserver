@@ -19,6 +19,9 @@ import (
 )
 
 const (
+	// AgentHealthPort is the default value for option.AgentHealthPort
+	AgentHealthPort = 9876
+
 	// IPv6ClusterAllocCIDR is the default value for option.IPv6ClusterAllocCIDR
 	IPv6ClusterAllocCIDR = IPv6ClusterAllocCIDRBase + "/64"
 
@@ -195,6 +198,10 @@ const (
 	// EnableEndpointHealthChecking
 	EnableEndpointHealthChecking = true
 
+	// EnableHealthCheckNodePort is the default value for
+	// EnableHealthCheckNodePort
+	EnableHealthCheckNodePort = true
+
 	// AlignCheckerName is the BPF object name for the alignchecker.
 	AlignCheckerName = "bpf_alignchecker.o"
 
@@ -223,6 +230,10 @@ const (
 	// SelectiveRegeneration specifies whether regeneration of endpoints will be
 	// invoked only for endpoints which are selected by policy changes.
 	SelectiveRegeneration = true
+
+	// K8sSyncTimeout specifies the standard time to allow for synchronizing
+	// local caches with Kubernetes state before exiting.
+	K8sSyncTimeout = 3 * time.Minute
 
 	// K8sWatcherEndpointSelector specifies the k8s endpoints that Cilium
 	// should watch for.
@@ -361,7 +372,7 @@ const (
 
 	// IPAMExpiration is the timeout after which an IP subject to expiratio
 	// is being released again if no endpoint is being created in time.
-	IPAMExpiration = 3 * time.Minute
+	IPAMExpiration = 10 * time.Minute
 
 	// EnableIPv4FragmentsTracking enables IPv4 fragments tracking for
 	// L4-based lookups
@@ -370,4 +381,17 @@ const (
 	// FragmentsMapEntries is the default number of entries allowed in an
 	// the map used to track datagram fragments.
 	FragmentsMapEntries = 8192
+
+	// K8sEnableAPIDiscovery defines whether Kuberntes API groups and
+	// resources should be probed using the discovery API
+	K8sEnableAPIDiscovery = false
+
+	// EnableIdentityMark enables setting identity in mark field of packet
+	// for local traffic
+	EnableIdentityMark = true
+
+	// K8sEnableLeasesFallbackDiscovery enables k8s to fallback to API probing to check
+	// for the support of Leases in Kubernetes when there is an error in discovering
+	// API groups using Discovery API.
+	K8sEnableLeasesFallbackDiscovery = false
 )

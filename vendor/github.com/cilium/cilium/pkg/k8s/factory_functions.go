@@ -15,111 +15,181 @@
 package k8s
 
 import (
-	"reflect"
-
-	"github.com/cilium/cilium/pkg/annotation"
 	"github.com/cilium/cilium/pkg/comparator"
 	"github.com/cilium/cilium/pkg/datapath"
 	cilium_v2 "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2"
+	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1"
+	slim_discover_v1beta1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/discovery/v1beta1"
+	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
+	slim_networkingv1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/networking/v1"
 	"github.com/cilium/cilium/pkg/k8s/types"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/api/discovery/v1beta1"
-	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
-func CopyObjToV1NetworkPolicy(obj interface{}) *types.NetworkPolicy {
-	k8sNP, ok := obj.(*types.NetworkPolicy)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 NetworkPolicy")
-		return nil
+func ObjToV1NetworkPolicy(obj interface{}) *slim_networkingv1.NetworkPolicy {
+	k8sNP, ok := obj.(*slim_networkingv1.NetworkPolicy)
+	if ok {
+		return k8sNP
 	}
-	return k8sNP.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		k8sNP, ok := deletedObj.Obj.(*slim_networkingv1.NetworkPolicy)
+		if ok {
+			return k8sNP
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 NetworkPolicy")
+	return nil
 }
 
-func CopyObjToV1Services(obj interface{}) *types.Service {
-	svc, ok := obj.(*types.Service)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 Service")
-		return nil
+func ObjToV1Services(obj interface{}) *slim_corev1.Service {
+	svc, ok := obj.(*slim_corev1.Service)
+	if ok {
+		return svc
 	}
-	return svc.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		svc, ok := deletedObj.Obj.(*slim_corev1.Service)
+		if ok {
+			return svc
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 Service")
+	return nil
 }
 
-func CopyObjToV1Endpoints(obj interface{}) *types.Endpoints {
-	ep, ok := obj.(*types.Endpoints)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 Endpoints")
-		return nil
+func ObjToV1Endpoints(obj interface{}) *slim_corev1.Endpoints {
+	ep, ok := obj.(*slim_corev1.Endpoints)
+	if ok {
+		return ep
 	}
-	return ep.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		ep, ok := deletedObj.Obj.(*slim_corev1.Endpoints)
+		if ok {
+			return ep
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 Endpoints")
+	return nil
 }
 
-func CopyObjToV1EndpointSlice(obj interface{}) *types.EndpointSlice {
-	ep, ok := obj.(*types.EndpointSlice)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 EndpointSlice")
-		return nil
+func ObjToV1EndpointSlice(obj interface{}) *slim_discover_v1beta1.EndpointSlice {
+	ep, ok := obj.(*slim_discover_v1beta1.EndpointSlice)
+	if ok {
+		return ep
 	}
-	return ep.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		ep, ok := deletedObj.Obj.(*slim_discover_v1beta1.EndpointSlice)
+		if ok {
+			return ep
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1beta1 EndpointSlice")
+	return nil
 }
 
-func CopyObjToV2CNP(obj interface{}) *types.SlimCNP {
+func ObjToSlimCNP(obj interface{}) *types.SlimCNP {
 	cnp, ok := obj.(*types.SlimCNP)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v2 CiliumNetworkPolicy")
-		return nil
+	if ok {
+		return cnp
 	}
-	return cnp.DeepCopy()
-}
-
-func CopyObjToV1Pod(obj interface{}) *types.Pod {
-	pod, ok := obj.(*types.Pod)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 Pod")
-		return nil
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		cnp, ok := deletedObj.Obj.(*types.SlimCNP)
+		if ok {
+			return cnp
+		}
 	}
-	return pod.DeepCopy()
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v2 CiliumNetworkPolicy")
+	return nil
 }
 
-func CopyObjToV1Node(obj interface{}) *types.Node {
-	node, ok := obj.(*types.Node)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 Node")
-		return nil
+func ObjTov1Pod(obj interface{}) *slim_corev1.Pod {
+	pod, ok := obj.(*slim_corev1.Pod)
+	if ok {
+		return pod
 	}
-	return node.DeepCopy()
-}
-
-func CopyObjToV1Namespace(obj interface{}) *types.Namespace {
-	ns, ok := obj.(*types.Namespace)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid k8s v1 Namespace")
-		return nil
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		pod, ok := deletedObj.Obj.(*slim_corev1.Pod)
+		if ok {
+			return pod
+		}
 	}
-	return ns.DeepCopy()
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 Pod")
+	return nil
 }
 
-func EqualV1NetworkPolicy(np1, np2 *types.NetworkPolicy) bool {
-	// As Cilium uses all of the Spec from a NP it's not probably not worth
-	// it to create a dedicated deep equal	 function to compare both network
-	// policies.
-	return np1.Name == np2.Name &&
-		np1.Namespace == np2.Namespace &&
-		reflect.DeepEqual(np1.Spec, np2.Spec)
+func ObjToV1Node(obj interface{}) *slim_corev1.Node {
+	node, ok := obj.(*slim_corev1.Node)
+	if ok {
+		return node
+	}
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		node, ok := deletedObj.Obj.(*slim_corev1.Node)
+		if ok {
+			return node
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 Node")
+	return nil
 }
 
-func EqualV1Services(k8sSVC1, k8sSVC2 *types.Service, nodeAddressing datapath.NodeAddressing) bool {
+func ObjToV1Namespace(obj interface{}) *slim_corev1.Namespace {
+	ns, ok := obj.(*slim_corev1.Namespace)
+	if ok {
+		return ns
+	}
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		ns, ok := deletedObj.Obj.(*slim_corev1.Namespace)
+		if ok {
+			return ns
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid k8s v1 Namespace")
+	return nil
+}
+
+func EqualV1Services(k8sSVC1, k8sSVC2 *slim_corev1.Service, nodeAddressing datapath.NodeAddressing) bool {
 	// Service annotations are used to mark services as global, shared, etc.
 	if !comparator.MapStringEquals(k8sSVC1.GetAnnotations(), k8sSVC2.GetAnnotations()) {
 		return false
@@ -137,49 +207,6 @@ func EqualV1Services(k8sSVC1, k8sSVC2 *types.Service, nodeAddressing datapath.No
 	return svc1.DeepEquals(svc2)
 }
 
-func EqualV1Endpoints(ep1, ep2 *types.Endpoints) bool {
-	// We only care about the Name, Namespace and Subsets of a particular
-	// endpoint.
-	return ep1.Name == ep2.Name &&
-		ep1.Namespace == ep2.Namespace &&
-		reflect.DeepEqual(ep1.Subsets, ep2.Subsets)
-}
-
-func EqualV1EndpointSlice(ep1, ep2 *types.EndpointSlice) bool {
-	// We only care about the Name, Namespace and Subsets of a particular
-	// endpoint.
-	// AddressType is omitted because it's immutable after EndpointSlice's
-	// creation.
-	return ep1.Name == ep2.Name &&
-		ep1.Namespace == ep2.Namespace &&
-		reflect.DeepEqual(ep1.Endpoints, ep2.Endpoints) &&
-		reflect.DeepEqual(ep1.Ports, ep2.Ports)
-}
-
-func EqualV2CNP(cnp1, cnp2 *types.SlimCNP) bool {
-	if !(cnp1.Name == cnp2.Name && cnp1.Namespace == cnp2.Namespace) {
-		return false
-	}
-
-	// Ignore v1.LastAppliedConfigAnnotation annotation
-	lastAppliedCfgAnnotation1, ok1 := cnp1.GetAnnotations()[v1.LastAppliedConfigAnnotation]
-	lastAppliedCfgAnnotation2, ok2 := cnp2.GetAnnotations()[v1.LastAppliedConfigAnnotation]
-	defer func() {
-		if ok1 && cnp1.GetAnnotations() != nil {
-			cnp1.GetAnnotations()[v1.LastAppliedConfigAnnotation] = lastAppliedCfgAnnotation1
-		}
-		if ok2 && cnp2.GetAnnotations() != nil {
-			cnp2.GetAnnotations()[v1.LastAppliedConfigAnnotation] = lastAppliedCfgAnnotation2
-		}
-	}()
-	delete(cnp1.GetAnnotations(), v1.LastAppliedConfigAnnotation)
-	delete(cnp2.GetAnnotations(), v1.LastAppliedConfigAnnotation)
-
-	return comparator.MapStringEquals(cnp1.GetAnnotations(), cnp2.GetAnnotations()) &&
-		reflect.DeepEqual(cnp1.Spec, cnp2.Spec) &&
-		reflect.DeepEqual(cnp1.Specs, cnp2.Specs)
-}
-
 // AnnotationsEqual returns whether the annotation with any key in
 // relevantAnnotations is equal in anno1 and anno2.
 func AnnotationsEqual(relevantAnnotations []string, anno1, anno2 map[string]string) bool {
@@ -191,134 +218,94 @@ func AnnotationsEqual(relevantAnnotations []string, anno1, anno2 map[string]stri
 	return true
 }
 
-func EqualV1PodContainers(c1, c2 types.PodContainer) bool {
-	if c1.Name != c2.Name ||
-		c1.Image != c2.Image {
-		return false
+func convertToK8sServicePorts(ports []v1.ServicePort) []slim_corev1.ServicePort {
+	if ports == nil {
+		return nil
 	}
 
-	if len(c1.VolumeMountsPaths) != len(c2.VolumeMountsPaths) {
-		return false
-	}
-	for i, vlmMount1 := range c1.VolumeMountsPaths {
-		if vlmMount1 != c2.VolumeMountsPaths[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func EqualV1Pod(pod1, pod2 *types.Pod) bool {
-	// We only care about the HostIP, the PodIP and the labels of the pods.
-	if pod1.StatusPodIP != pod2.StatusPodIP ||
-		pod1.StatusHostIP != pod2.StatusHostIP ||
-		pod1.SpecServiceAccountName != pod2.SpecServiceAccountName ||
-		pod1.SpecHostNetwork != pod2.SpecHostNetwork {
-		return false
-	}
-
-	if !AnnotationsEqual([]string{annotation.ProxyVisibility}, pod1.GetAnnotations(), pod2.GetAnnotations()) {
-		return false
-	}
-
-	oldPodLabels := pod1.GetLabels()
-	newPodLabels := pod2.GetLabels()
-	if !comparator.MapStringEquals(oldPodLabels, newPodLabels) {
-		return false
-	}
-
-	if len(pod1.SpecContainers) != len(pod2.SpecContainers) {
-		return false
-	}
-	for i, c1 := range pod1.SpecContainers {
-		if !EqualV1PodContainers(c1, pod2.SpecContainers[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func EqualV1Node(node1, node2 *types.Node) bool {
-	if node1.GetObjectMeta().GetName() != node2.GetObjectMeta().GetName() {
-		return false
-	}
-
-	anno1 := node1.GetAnnotations()
-	anno2 := node2.GetAnnotations()
-	annotationsWeCareAbout := []string{
-		annotation.CiliumHostIP,
-		annotation.CiliumHostIPv6,
-		annotation.V4HealthName,
-		annotation.V6HealthName,
-	}
-	for _, an := range annotationsWeCareAbout {
-		if anno1[an] != anno2[an] {
-			return false
-		}
-	}
-	if len(node1.SpecTaints) != len(node2.SpecTaints) {
-		return false
-	}
-	for i, taint2 := range node2.SpecTaints {
-		taint1 := node1.SpecTaints[i]
-		if !taint1.MatchTaint(&taint2) {
-			return false
-		}
-		if taint1.Value != taint2.Value {
-			return false
-		}
-		if !taint1.TimeAdded.Equal(taint2.TimeAdded) {
-			return false
-		}
-	}
-	return true
-}
-
-func EqualV1Namespace(ns1, ns2 *types.Namespace) bool {
-	// we only care about namespace labels.
-	return ns1.Name == ns2.Name &&
-		comparator.MapStringEquals(ns1.GetLabels(), ns2.GetLabels())
-}
-
-// ConvertToNetworkPolicy converts a *networkingv1.NetworkPolicy into a
-// *types.NetworkPolicy or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.NetworkPolicy in its Obj.
-// If the given obj can't be cast into either *networkingv1.NetworkPolicy
-// nor cache.DeletedFinalStateUnknown, the original obj is returned.
-func ConvertToNetworkPolicy(obj interface{}) interface{} {
-	// TODO check which fields we really need
-	switch concreteObj := obj.(type) {
-	case *networkingv1.NetworkPolicy:
-		return &types.NetworkPolicy{
-			NetworkPolicy: concreteObj,
-		}
-	case cache.DeletedFinalStateUnknown:
-		netPol, ok := concreteObj.Obj.(*networkingv1.NetworkPolicy)
-		if !ok {
-			return obj
-		}
-		return cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &types.NetworkPolicy{
-				NetworkPolicy: netPol,
+	slimPorts := make([]slim_corev1.ServicePort, 0, len(ports))
+	for _, v1Port := range ports {
+		slimPorts = append(slimPorts,
+			slim_corev1.ServicePort{
+				Name:     v1Port.Name,
+				Protocol: slim_corev1.Protocol(v1Port.Protocol),
+				Port:     v1Port.Port,
+				NodePort: v1Port.NodePort,
 			},
-		}
-	default:
-		return obj
+		)
 	}
+	return slimPorts
+}
+
+func convertToK8sServiceAffinityConfig(saCfg *v1.SessionAffinityConfig) *slim_corev1.SessionAffinityConfig {
+	if saCfg == nil {
+		return nil
+	}
+
+	if saCfg.ClientIP == nil {
+		return &slim_corev1.SessionAffinityConfig{}
+	}
+
+	return &slim_corev1.SessionAffinityConfig{
+		ClientIP: &slim_corev1.ClientIPConfig{
+			TimeoutSeconds: saCfg.ClientIP.TimeoutSeconds,
+		},
+	}
+}
+
+func convertToK8sLoadBalancerIngress(lbIngs []v1.LoadBalancerIngress) []slim_corev1.LoadBalancerIngress {
+	if lbIngs == nil {
+		return nil
+	}
+
+	slimLBIngs := make([]slim_corev1.LoadBalancerIngress, 0, len(lbIngs))
+	for _, lbIng := range lbIngs {
+		slimLBIngs = append(slimLBIngs,
+			slim_corev1.LoadBalancerIngress{
+				IP: lbIng.IP,
+			},
+		)
+	}
+	return slimLBIngs
 }
 
 // ConvertToK8sService converts a *v1.Service into a
-// *types.Service or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.Service in its Obj.
-// If the given obj can't be cast into either *v1.Service
+// *slim_corev1.Service or a cache.DeletedFinalStateUnknown into
+// a cache.DeletedFinalStateUnknown with a *slim_corev1.Service in its Obj.
+// If the given obj can't be cast into either *slim_corev1.Service
 // nor cache.DeletedFinalStateUnknown, the original obj is returned.
 func ConvertToK8sService(obj interface{}) interface{} {
-	// TODO check which fields we really need
 	switch concreteObj := obj.(type) {
 	case *v1.Service:
-		return &types.Service{
-			Service: concreteObj,
+		return &slim_corev1.Service{
+			TypeMeta: slim_metav1.TypeMeta{
+				Kind:       concreteObj.TypeMeta.Kind,
+				APIVersion: concreteObj.TypeMeta.APIVersion,
+			},
+			ObjectMeta: slim_metav1.ObjectMeta{
+				Name:            concreteObj.ObjectMeta.Name,
+				Namespace:       concreteObj.ObjectMeta.Namespace,
+				ResourceVersion: concreteObj.ObjectMeta.ResourceVersion,
+				UID:             concreteObj.ObjectMeta.UID,
+				Labels:          concreteObj.ObjectMeta.Labels,
+				Annotations:     concreteObj.ObjectMeta.Annotations,
+			},
+			Spec: slim_corev1.ServiceSpec{
+				Ports:                 convertToK8sServicePorts(concreteObj.Spec.Ports),
+				Selector:              concreteObj.Spec.Selector,
+				ClusterIP:             concreteObj.Spec.ClusterIP,
+				Type:                  slim_corev1.ServiceType(concreteObj.Spec.Type),
+				ExternalIPs:           concreteObj.Spec.ExternalIPs,
+				SessionAffinity:       slim_corev1.ServiceAffinity(concreteObj.Spec.SessionAffinity),
+				ExternalTrafficPolicy: slim_corev1.ServiceExternalTrafficPolicyType(concreteObj.Spec.ExternalTrafficPolicy),
+				HealthCheckNodePort:   concreteObj.Spec.HealthCheckNodePort,
+				SessionAffinityConfig: convertToK8sServiceAffinityConfig(concreteObj.Spec.SessionAffinityConfig),
+			},
+			Status: slim_corev1.ServiceStatus{
+				LoadBalancer: slim_corev1.LoadBalancerStatus{
+					Ingress: convertToK8sLoadBalancerIngress(concreteObj.Status.LoadBalancer.Ingress),
+				},
+			},
 		}
 	case cache.DeletedFinalStateUnknown:
 		svc, ok := concreteObj.Obj.(*v1.Service)
@@ -327,64 +314,35 @@ func ConvertToK8sService(obj interface{}) interface{} {
 		}
 		return cache.DeletedFinalStateUnknown{
 			Key: concreteObj.Key,
-			Obj: &types.Service{
-				Service: svc,
-			},
-		}
-	default:
-		return obj
-	}
-}
-
-// ConvertToK8sEndpoints converts a *v1.Endpoints into a
-// *types.Endpoints or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.Endpoints in its Obj.
-// If the given obj can't be cast into either *v1.Endpoints
-// nor cache.DeletedFinalStateUnknown, the original obj is returned.
-func ConvertToK8sEndpoints(obj interface{}) interface{} {
-	// TODO check which fields we really need
-	switch concreteObj := obj.(type) {
-	case *v1.Endpoints:
-		return &types.Endpoints{
-			Endpoints: concreteObj,
-		}
-	case cache.DeletedFinalStateUnknown:
-		eps, ok := concreteObj.Obj.(*v1.Endpoints)
-		if !ok {
-			return obj
-		}
-		return cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &types.Endpoints{
-				Endpoints: eps,
-			},
-		}
-	default:
-		return obj
-	}
-}
-
-// ConvertToK8sEndpointSlice converts a *v1beta1.EndpointSlice into a
-// *types.Endpoints or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.Endpoints in its Obj.
-// If the given obj can't be cast into either *v1.Endpoints
-// nor cache.DeletedFinalStateUnknown, the original obj is returned.
-func ConvertToK8sEndpointSlice(obj interface{}) interface{} {
-	// TODO check which fields we really need
-	switch concreteObj := obj.(type) {
-	case *v1beta1.EndpointSlice:
-		return &types.EndpointSlice{
-			EndpointSlice: concreteObj,
-		}
-	case cache.DeletedFinalStateUnknown:
-		eps, ok := concreteObj.Obj.(*v1beta1.EndpointSlice)
-		if !ok {
-			return obj
-		}
-		return cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &types.EndpointSlice{
-				EndpointSlice: eps,
+			Obj: &slim_corev1.Service{
+				TypeMeta: slim_metav1.TypeMeta{
+					Kind:       svc.TypeMeta.Kind,
+					APIVersion: svc.TypeMeta.APIVersion,
+				},
+				ObjectMeta: slim_metav1.ObjectMeta{
+					Name:            svc.ObjectMeta.Name,
+					Namespace:       svc.ObjectMeta.Namespace,
+					ResourceVersion: svc.ObjectMeta.ResourceVersion,
+					UID:             svc.ObjectMeta.UID,
+					Labels:          svc.ObjectMeta.Labels,
+					Annotations:     svc.ObjectMeta.Annotations,
+				},
+				Spec: slim_corev1.ServiceSpec{
+					Ports:                 convertToK8sServicePorts(svc.Spec.Ports),
+					Selector:              svc.Spec.Selector,
+					ClusterIP:             svc.Spec.ClusterIP,
+					Type:                  slim_corev1.ServiceType(svc.Spec.Type),
+					ExternalIPs:           svc.Spec.ExternalIPs,
+					SessionAffinity:       slim_corev1.ServiceAffinity(svc.Spec.SessionAffinity),
+					ExternalTrafficPolicy: slim_corev1.ServiceExternalTrafficPolicyType(svc.Spec.ExternalTrafficPolicy),
+					HealthCheckNodePort:   svc.Spec.HealthCheckNodePort,
+					SessionAffinityConfig: convertToK8sServiceAffinityConfig(svc.Spec.SessionAffinityConfig),
+				},
+				Status: slim_corev1.ServiceStatus{
+					LoadBalancer: slim_corev1.LoadBalancerStatus{
+						Ingress: convertToK8sLoadBalancerIngress(svc.Status.LoadBalancer.Ingress),
+					},
+				},
 			},
 		}
 	default:
@@ -543,97 +501,47 @@ func ConvertToCNP(obj interface{}) interface{} {
 	}
 }
 
-// ConvertToPod converts a *v1.Pod into a
-// *types.Pod or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.Pod in its Obj.
-// If the given obj can't be cast into either *v1.Pod
-// nor cache.DeletedFinalStateUnknown, the original obj is returned.
-// WARNING calling this function will set *all* fields of the given Pod as
-// empty.
-func ConvertToPod(obj interface{}) interface{} {
-	switch concreteObj := obj.(type) {
-	case *v1.Pod:
-		var containers []types.PodContainer
-		for _, c := range concreteObj.Spec.Containers {
-			var vmps []string
-			var ports []types.ContainerPort
-			for _, cvm := range c.VolumeMounts {
-				vmps = append(vmps, cvm.MountPath)
-			}
-			for _, port := range c.Ports {
-				cp := types.ContainerPort{
-					Protocol:      string(port.Protocol),
-					ContainerPort: port.ContainerPort,
-					HostPort:      port.HostPort,
-					HostIP:        port.HostIP,
-				}
-				ports = append(ports, cp)
-			}
-			pc := types.PodContainer{
-				Name:              c.Name,
-				Image:             c.Image,
-				VolumeMountsPaths: vmps,
-				HostPorts:         ports,
-			}
-			containers = append(containers, pc)
-		}
-		p := &types.Pod{
-			TypeMeta:               concreteObj.TypeMeta,
-			ObjectMeta:             concreteObj.ObjectMeta,
-			StatusPodIP:            concreteObj.Status.PodIP,
-			StatusHostIP:           concreteObj.Status.HostIP,
-			SpecServiceAccountName: concreteObj.Spec.ServiceAccountName,
-			SpecHostNetwork:        concreteObj.Spec.HostNetwork,
-			SpecContainers:         containers,
-		}
-		*concreteObj = v1.Pod{}
-		return p
-	case cache.DeletedFinalStateUnknown:
-		pod, ok := concreteObj.Obj.(*v1.Pod)
-		if !ok {
-			return obj
-		}
-		var containers []types.PodContainer
-		for _, c := range pod.Spec.Containers {
-			var vmps []string
-			var ports []types.ContainerPort
-			for _, cvm := range c.VolumeMounts {
-				vmps = append(vmps, cvm.MountPath)
-			}
-			for _, port := range c.Ports {
-				cp := types.ContainerPort{
-					Protocol:      string(port.Protocol),
-					ContainerPort: port.ContainerPort,
-					HostPort:      port.HostPort,
-					HostIP:        port.HostIP,
-				}
-				ports = append(ports, cp)
-			}
-			pc := types.PodContainer{
-				Name:              c.Name,
-				Image:             c.Image,
-				VolumeMountsPaths: vmps,
-				HostPorts:         ports,
-			}
-			containers = append(containers, pc)
-		}
-		dfsu := cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &types.Pod{
-				TypeMeta:               pod.TypeMeta,
-				ObjectMeta:             pod.ObjectMeta,
-				StatusPodIP:            pod.Status.PodIP,
-				StatusHostIP:           pod.Status.HostIP,
-				SpecServiceAccountName: pod.Spec.ServiceAccountName,
-				SpecHostNetwork:        pod.Spec.HostNetwork,
-				SpecContainers:         containers,
-			},
-		}
-		*pod = v1.Pod{}
-		return dfsu
-	default:
-		return obj
+func convertToAddress(v1Addrs []v1.NodeAddress) []slim_corev1.NodeAddress {
+	if v1Addrs == nil {
+		return nil
 	}
+
+	addrs := make([]slim_corev1.NodeAddress, 0, len(v1Addrs))
+	for _, addr := range v1Addrs {
+		addrs = append(
+			addrs,
+			slim_corev1.NodeAddress{
+				Type:    slim_corev1.NodeAddressType(addr.Type),
+				Address: addr.Address,
+			},
+		)
+	}
+	return addrs
+}
+
+func convertToTaints(v1Taints []v1.Taint) []slim_corev1.Taint {
+	if v1Taints == nil {
+		return nil
+	}
+
+	taints := make([]slim_corev1.Taint, 0, len(v1Taints))
+	for _, taint := range v1Taints {
+		var ta *slim_metav1.Time
+		if taint.TimeAdded != nil {
+			t := slim_metav1.NewTime(taint.TimeAdded.Time)
+			ta = &t
+		}
+		taints = append(
+			taints,
+			slim_corev1.Taint{
+				Key:       taint.Key,
+				Value:     taint.Value,
+				Effect:    slim_corev1.TaintEffect(taint.Effect),
+				TimeAdded: ta,
+			},
+		)
+	}
+	return taints
 }
 
 // ConvertToNode converts a *v1.Node into a
@@ -646,13 +554,27 @@ func ConvertToPod(obj interface{}) interface{} {
 func ConvertToNode(obj interface{}) interface{} {
 	switch concreteObj := obj.(type) {
 	case *v1.Node:
-		p := &types.Node{
-			TypeMeta:        concreteObj.TypeMeta,
-			ObjectMeta:      concreteObj.ObjectMeta,
-			StatusAddresses: concreteObj.Status.Addresses,
-			SpecPodCIDR:     concreteObj.Spec.PodCIDR,
-			SpecPodCIDRs:    concreteObj.Spec.PodCIDRs,
-			SpecTaints:      concreteObj.Spec.Taints,
+		p := &slim_corev1.Node{
+			TypeMeta: slim_metav1.TypeMeta{
+				Kind:       concreteObj.TypeMeta.Kind,
+				APIVersion: concreteObj.TypeMeta.APIVersion,
+			},
+			ObjectMeta: slim_metav1.ObjectMeta{
+				Name:            concreteObj.ObjectMeta.Name,
+				Namespace:       concreteObj.ObjectMeta.Namespace,
+				UID:             concreteObj.ObjectMeta.UID,
+				ResourceVersion: concreteObj.ObjectMeta.ResourceVersion,
+				Labels:          concreteObj.ObjectMeta.Labels,
+				Annotations:     concreteObj.ObjectMeta.Annotations,
+			},
+			Spec: slim_corev1.NodeSpec{
+				PodCIDR:  concreteObj.Spec.PodCIDR,
+				PodCIDRs: concreteObj.Spec.PodCIDRs,
+				Taints:   convertToTaints(concreteObj.Spec.Taints),
+			},
+			Status: slim_corev1.NodeStatus{
+				Addresses: convertToAddress(concreteObj.Status.Addresses),
+			},
 		}
 		*concreteObj = v1.Node{}
 		return p
@@ -663,51 +585,30 @@ func ConvertToNode(obj interface{}) interface{} {
 		}
 		dfsu := cache.DeletedFinalStateUnknown{
 			Key: concreteObj.Key,
-			Obj: &types.Node{
-				TypeMeta:        node.TypeMeta,
-				ObjectMeta:      node.ObjectMeta,
-				StatusAddresses: node.Status.Addresses,
-				SpecPodCIDR:     node.Spec.PodCIDR,
-				SpecPodCIDRs:    node.Spec.PodCIDRs,
-				SpecTaints:      node.Spec.Taints,
+			Obj: &slim_corev1.Node{
+				TypeMeta: slim_metav1.TypeMeta{
+					Kind:       node.TypeMeta.Kind,
+					APIVersion: node.TypeMeta.APIVersion,
+				},
+				ObjectMeta: slim_metav1.ObjectMeta{
+					Name:            node.ObjectMeta.Name,
+					Namespace:       node.ObjectMeta.Namespace,
+					UID:             node.ObjectMeta.UID,
+					ResourceVersion: node.ObjectMeta.ResourceVersion,
+					Labels:          node.ObjectMeta.Labels,
+					Annotations:     node.ObjectMeta.Annotations,
+				},
+				Spec: slim_corev1.NodeSpec{
+					PodCIDR:  node.Spec.PodCIDR,
+					PodCIDRs: node.Spec.PodCIDRs,
+					Taints:   convertToTaints(node.Spec.Taints),
+				},
+				Status: slim_corev1.NodeStatus{
+					Addresses: convertToAddress(node.Status.Addresses),
+				},
 			},
 		}
 		*node = v1.Node{}
-		return dfsu
-	default:
-		return obj
-	}
-}
-
-// ConvertToNamespace converts a *v1.Namespace into a
-// *types.Namespace or a cache.DeletedFinalStateUnknown into
-// a cache.DeletedFinalStateUnknown with a *types.Namespace in its Obj.
-// If the given obj can't be cast into either *v1.Namespace
-// nor cache.DeletedFinalStateUnknown, the original obj is returned.
-// WARNING calling this function will set *all* fields of the given Namespace as
-// empty.
-func ConvertToNamespace(obj interface{}) interface{} {
-	switch concreteObj := obj.(type) {
-	case *v1.Namespace:
-		p := &types.Namespace{
-			TypeMeta:   concreteObj.TypeMeta,
-			ObjectMeta: concreteObj.ObjectMeta,
-		}
-		*concreteObj = v1.Namespace{}
-		return p
-	case cache.DeletedFinalStateUnknown:
-		namespace, ok := concreteObj.Obj.(*v1.Namespace)
-		if !ok {
-			return obj
-		}
-		dfsu := cache.DeletedFinalStateUnknown{
-			Key: concreteObj.Key,
-			Obj: &types.Namespace{
-				TypeMeta:   namespace.TypeMeta,
-				ObjectMeta: namespace.ObjectMeta,
-			},
-		}
-		*namespace = v1.Namespace{}
 		return dfsu
 	default:
 		return obj
@@ -738,16 +639,26 @@ func ConvertToCiliumNode(obj interface{}) interface{} {
 	}
 }
 
-// CopyObjToCiliumNode attempts to cast object to a CiliumNode object and
+// ObjToCiliumNode attempts to cast object to a CiliumNode object and
 // returns a deep copy if the castin succeeds. Otherwise, nil is returned.
-func CopyObjToCiliumNode(obj interface{}) *cilium_v2.CiliumNode {
+func ObjToCiliumNode(obj interface{}) *cilium_v2.CiliumNode {
 	cn, ok := obj.(*cilium_v2.CiliumNode)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid CiliumNode")
-		return nil
+	if ok {
+		return cn
 	}
-	return cn.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		cn, ok := deletedObj.Obj.(*cilium_v2.CiliumNode)
+		if ok {
+			return cn
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid v2 CiliumNode")
+	return nil
 }
 
 // ConvertToCiliumEndpoint converts a *cilium_v2.CiliumEndpoint into a
@@ -759,11 +670,27 @@ func ConvertToCiliumEndpoint(obj interface{}) interface{} {
 	switch concreteObj := obj.(type) {
 	case *cilium_v2.CiliumEndpoint:
 		p := &types.CiliumEndpoint{
-			TypeMeta:   concreteObj.TypeMeta,
-			ObjectMeta: concreteObj.ObjectMeta,
-			Encryption: concreteObj.Status.Encryption.DeepCopy(),
-			Identity:   concreteObj.Status.Identity.DeepCopy(),
-			Networking: concreteObj.Status.Networking.DeepCopy(),
+			TypeMeta: slim_metav1.TypeMeta{
+				Kind:       concreteObj.TypeMeta.Kind,
+				APIVersion: concreteObj.TypeMeta.APIVersion,
+			},
+			ObjectMeta: slim_metav1.ObjectMeta{
+				Name:            concreteObj.ObjectMeta.Name,
+				Namespace:       concreteObj.ObjectMeta.Namespace,
+				UID:             concreteObj.ObjectMeta.UID,
+				ResourceVersion: concreteObj.ObjectMeta.ResourceVersion,
+				// We don't need to store labels nor annotations because
+				// they are not used by the CEP handlers.
+				Labels:      nil,
+				Annotations: nil,
+			},
+			Encryption: func() *cilium_v2.EncryptionSpec {
+				enc := concreteObj.Status.Encryption
+				return &enc
+			}(),
+			Identity:   concreteObj.Status.Identity,
+			Networking: concreteObj.Status.Networking,
+			NamedPorts: concreteObj.Status.NamedPorts,
 		}
 		*concreteObj = cilium_v2.CiliumEndpoint{}
 		return p
@@ -775,11 +702,27 @@ func ConvertToCiliumEndpoint(obj interface{}) interface{} {
 		dfsu := cache.DeletedFinalStateUnknown{
 			Key: concreteObj.Key,
 			Obj: &types.CiliumEndpoint{
-				TypeMeta:   ciliumEndpoint.TypeMeta,
-				ObjectMeta: ciliumEndpoint.ObjectMeta,
-				Encryption: ciliumEndpoint.Status.Encryption.DeepCopy(),
-				Identity:   ciliumEndpoint.Status.Identity.DeepCopy(),
-				Networking: ciliumEndpoint.Status.Networking.DeepCopy(),
+				TypeMeta: slim_metav1.TypeMeta{
+					Kind:       ciliumEndpoint.TypeMeta.Kind,
+					APIVersion: ciliumEndpoint.TypeMeta.APIVersion,
+				},
+				ObjectMeta: slim_metav1.ObjectMeta{
+					Name:            ciliumEndpoint.ObjectMeta.Name,
+					Namespace:       ciliumEndpoint.ObjectMeta.Namespace,
+					UID:             ciliumEndpoint.ObjectMeta.UID,
+					ResourceVersion: ciliumEndpoint.ObjectMeta.ResourceVersion,
+					// We don't need to store labels nor annotations because
+					// they are not used by the CEP handlers.
+					Labels:      nil,
+					Annotations: nil,
+				},
+				Encryption: func() *cilium_v2.EncryptionSpec {
+					enc := ciliumEndpoint.Status.Encryption
+					return &enc
+				}(),
+				Identity:   ciliumEndpoint.Status.Identity,
+				Networking: ciliumEndpoint.Status.Networking,
+				NamedPorts: ciliumEndpoint.Status.NamedPorts,
 			},
 		}
 		*ciliumEndpoint = cilium_v2.CiliumEndpoint{}
@@ -789,14 +732,24 @@ func ConvertToCiliumEndpoint(obj interface{}) interface{} {
 	}
 }
 
-// CopyObjToCiliumEndpoint attempts to cast object to a CiliumEndpoint object
+// ObjToCiliumEndpoint attempts to cast object to a CiliumEndpoint object
 // and returns a deep copy if the castin succeeds. Otherwise, nil is returned.
-func CopyObjToCiliumEndpoint(obj interface{}) *types.CiliumEndpoint {
+func ObjToCiliumEndpoint(obj interface{}) *types.CiliumEndpoint {
 	ce, ok := obj.(*types.CiliumEndpoint)
-	if !ok {
-		log.WithField(logfields.Object, logfields.Repr(obj)).
-			Warn("Ignoring invalid CiliumEndpoint")
-		return nil
+	if ok {
+		return ce
 	}
-	return ce.DeepCopy()
+	deletedObj, ok := obj.(cache.DeletedFinalStateUnknown)
+	if ok {
+		// Delete was not observed by the watcher but is
+		// removed from kube-apiserver. This is the last
+		// known state and the object no longer exists.
+		ce, ok := deletedObj.Obj.(*types.CiliumEndpoint)
+		if ok {
+			return ce
+		}
+	}
+	log.WithField(logfields.Object, logfields.Repr(obj)).
+		Warn("Ignoring invalid v2 CiliumEndpoint")
+	return nil
 }

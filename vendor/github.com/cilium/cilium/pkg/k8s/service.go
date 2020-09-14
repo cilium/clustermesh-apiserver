@@ -1,4 +1,4 @@
-// Copyright 2018-2019 Authors of Cilium
+// Copyright 2018-2020 Authors of Cilium
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,9 +22,10 @@ import (
 	"time"
 
 	"github.com/cilium/cilium/pkg/annotation"
+	"github.com/cilium/cilium/pkg/cidr"
 	"github.com/cilium/cilium/pkg/comparator"
 	"github.com/cilium/cilium/pkg/datapath"
-	"github.com/cilium/cilium/pkg/k8s/types"
+	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1"
 	"github.com/cilium/cilium/pkg/loadbalancer"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/option"
@@ -34,7 +35,7 @@ import (
 	"k8s.io/api/core/v1"
 )
 
-func getAnnotationIncludeExternal(svc *types.Service) bool {
+func getAnnotationIncludeExternal(svc *slim_corev1.Service) bool {
 	if value, ok := svc.ObjectMeta.Annotations[annotation.GlobalService]; ok {
 		return strings.ToLower(value) == "true"
 	}
@@ -42,7 +43,7 @@ func getAnnotationIncludeExternal(svc *types.Service) bool {
 	return false
 }
 
-func getAnnotationShared(svc *types.Service) bool {
+func getAnnotationShared(svc *slim_corev1.Service) bool {
 	if value, ok := svc.ObjectMeta.Annotations[annotation.SharedService]; ok {
 		return strings.ToLower(value) == "true"
 	}
@@ -51,7 +52,7 @@ func getAnnotationShared(svc *types.Service) bool {
 }
 
 // ParseServiceID parses a Kubernetes service and returns the ServiceID
-func ParseServiceID(svc *types.Service) ServiceID {
+func ParseServiceID(svc *slim_corev1.Service) ServiceID {
 	return ServiceID{
 		Name:      svc.ObjectMeta.Name,
 		Namespace: svc.ObjectMeta.Namespace,
@@ -59,7 +60,7 @@ func ParseServiceID(svc *types.Service) ServiceID {
 }
 
 // ParseService parses a Kubernetes service and returns a Service
-func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (ServiceID, *Service) {
+func ParseService(svc *slim_corev1.Service, nodeAddressing datapath.NodeAddressing) (ServiceID, *Service) {
 	scopedLog := log.WithFields(logrus.Fields{
 		logfields.K8sSvcName:    svc.ObjectMeta.Name,
 		logfields.K8sNamespace:  svc.ObjectMeta.Namespace,
@@ -71,10 +72,10 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 	svcID := ParseServiceID(svc)
 
 	switch svc.Spec.Type {
-	case v1.ServiceTypeClusterIP, v1.ServiceTypeNodePort, v1.ServiceTypeLoadBalancer:
+	case slim_corev1.ServiceTypeClusterIP, slim_corev1.ServiceTypeNodePort, slim_corev1.ServiceTypeLoadBalancer:
 		break
 
-	case v1.ServiceTypeExternalName:
+	case slim_corev1.ServiceTypeExternalName:
 		// External-name services must be ignored
 		return ServiceID{}, nil
 
@@ -95,7 +96,7 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 
 	var trafficPolicy loadbalancer.SVCTrafficPolicy
 	switch svc.Spec.ExternalTrafficPolicy {
-	case v1.ServiceExternalTrafficPolicyTypeLocal:
+	case slim_corev1.ServiceExternalTrafficPolicyTypeLocal:
 		trafficPolicy = loadbalancer.SVCTrafficPolicyLocal
 	default:
 		trafficPolicy = loadbalancer.SVCTrafficPolicyCluster
@@ -107,10 +108,21 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 		}
 	}
 
-	svcInfo := NewService(clusterIP, svc.Spec.ExternalIPs, loadBalancerIPs, headless,
+	svcInfo := NewService(clusterIP, svc.Spec.ExternalIPs,
+		loadBalancerIPs, svc.Spec.LoadBalancerSourceRanges, headless,
 		trafficPolicy, uint16(svc.Spec.HealthCheckNodePort), svc.Labels, svc.Spec.Selector)
 	svcInfo.IncludeExternal = getAnnotationIncludeExternal(svc)
 	svcInfo.Shared = getAnnotationShared(svc)
+
+	if svc.Spec.SessionAffinity == slim_corev1.ServiceAffinityClientIP {
+		svcInfo.SessionAffinity = true
+		if cfg := svc.Spec.SessionAffinityConfig; cfg != nil && cfg.ClientIP != nil && cfg.ClientIP.TimeoutSeconds != nil {
+			svcInfo.SessionAffinityTimeoutSec = uint32(*cfg.ClientIP.TimeoutSeconds)
+		}
+		if svcInfo.SessionAffinityTimeoutSec == 0 {
+			svcInfo.SessionAffinityTimeoutSec = uint32(v1.DefaultClientIPServiceAffinitySeconds)
+		}
+	}
 
 	for _, port := range svc.Spec.Ports {
 		p := loadbalancer.NewL4Addr(loadbalancer.L4Type(port.Protocol), uint16(port.Port))
@@ -118,17 +130,13 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 		if _, ok := svcInfo.Ports[portName]; !ok {
 			svcInfo.Ports[portName] = p
 		}
+		// TODO(brb) Get rid of this hack by moving the creation of surrogate
+		// frontends to pkg/service.
+		//
 		// This is a hack;-( In the case of NodePort service, we need to create
-		// three surrogate frontends per IP protocol - one with a zero IP addr used
-		// by the host-lb, one with a public iface IP addr and one with cilium_host
-		// IP addr.
-		// For each frontend we will need to store a service ID used for a reverse
-		// NAT translation and for deleting a service.
-		// Unfortunately, doing this in daemon/{loadbalancer,k8s_watcher}.go
-		// would introduce more complexity in already too complex LB codebase,
-		// so for now (until we have refactored the LB code) keep NodePort
-		// frontends in Service.NodePorts.
-		if svc.Spec.Type == v1.ServiceTypeNodePort || svc.Spec.Type == v1.ServiceTypeLoadBalancer {
+		// surrogate frontends per IP protocol - one with a zero IP addr and
+		// one per each public iface IP addr.
+		if svc.Spec.Type == slim_corev1.ServiceTypeNodePort || svc.Spec.Type == slim_corev1.ServiceTypeLoadBalancer {
 			if option.Config.EnableNodePort && nodeAddressing != nil {
 				if _, ok := svcInfo.NodePorts[portName]; !ok {
 					svcInfo.NodePorts[portName] =
@@ -142,7 +150,8 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 					clusterIP != nil && !strings.Contains(svc.Spec.ClusterIP, ":") {
 
 					for _, ip := range nodeAddressing.IPv4().LoadBalancerNodeAddresses() {
-						nodePortFE := loadbalancer.NewL3n4AddrID(proto, ip, port, id)
+						nodePortFE := loadbalancer.NewL3n4AddrID(proto, ip, port,
+							loadbalancer.ScopeExternal, id)
 						svcInfo.NodePorts[portName][nodePortFE.String()] = nodePortFE
 					}
 				}
@@ -150,7 +159,8 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 					clusterIP != nil && strings.Contains(svc.Spec.ClusterIP, ":") {
 
 					for _, ip := range nodeAddressing.IPv6().LoadBalancerNodeAddresses() {
-						nodePortFE := loadbalancer.NewL3n4AddrID(proto, ip, port, id)
+						nodePortFE := loadbalancer.NewL3n4AddrID(proto, ip, port,
+							loadbalancer.ScopeExternal, id)
 						svcInfo.NodePorts[portName][nodePortFE.String()] = nodePortFE
 					}
 				}
@@ -161,7 +171,7 @@ func ParseService(svc *types.Service, nodeAddressing datapath.NodeAddressing) (S
 	return svcID, svcInfo
 }
 
-// ServiceID identities the Kubernetes service
+// ServiceID identifies the Kubernetes service
 type ServiceID struct {
 	Name      string `json:"serviceName,omitempty"`
 	Namespace string `json:"namespace,omitempty"`
@@ -170,6 +180,13 @@ type ServiceID struct {
 // String returns the string representation of a service ID
 func (s ServiceID) String() string {
 	return fmt.Sprintf("%s/%s", s.Namespace, s.Name)
+}
+
+// EndpointSliceID identifies a Kubernetes EndpointSlice as well as the legacy
+// v1.Endpoints.
+type EndpointSliceID struct {
+	ServiceID
+	EndpointSliceName string
 }
 
 // ParseServiceIDFrom returns a ServiceID derived from the given kubernetes
@@ -228,10 +245,18 @@ type Service struct {
 	// K8sExternalIPs stores mapping of the endpoint in a string format to the
 	// externalIP in net.IP format.
 	K8sExternalIPs map[string]net.IP
+
 	// LoadBalancerIPs stores LB IPs assigned to the service (string(IP) => IP).
-	LoadBalancerIPs map[string]net.IP
-	Labels          map[string]string
-	Selector        map[string]string
+	LoadBalancerIPs          map[string]net.IP
+	LoadBalancerSourceRanges map[string]*cidr.CIDR
+
+	Labels   map[string]string
+	Selector map[string]string
+
+	// SessionAffinity denotes whether service has the clientIP session affinity
+	SessionAffinity bool
+	// SessionAffinityTimeoutSeconds denotes session affinity timeout
+	SessionAffinityTimeoutSec uint32
 }
 
 // String returns the string representation of a service resource
@@ -329,6 +354,16 @@ func (s *Service) DeepEquals(o *Service) bool {
 				return false
 			}
 		}
+		if ((s.LoadBalancerSourceRanges == nil) != (o.LoadBalancerSourceRanges == nil)) ||
+			len(s.LoadBalancerSourceRanges) != len(o.LoadBalancerSourceRanges) {
+			return false
+		}
+		for k, v := range s.LoadBalancerSourceRanges {
+			vOther, ok := o.LoadBalancerSourceRanges[k]
+			if !ok || !v.Equal(vOther) {
+				return false
+			}
+		}
 		return true
 	}
 	return false
@@ -346,12 +381,22 @@ func parseIPs(externalIPs []string) map[string]net.IP {
 }
 
 // NewService returns a new Service with the Ports map initialized.
-func NewService(ip net.IP, externalIPs []string, loadBalancerIPs []string,
+func NewService(ip net.IP, externalIPs []string,
+	loadBalancerIPs []string, loadBalancerSourceRanges []string,
 	headless bool, trafficPolicy loadbalancer.SVCTrafficPolicy,
 	healthCheckNodePort uint16, labels, selector map[string]string) *Service {
 
-	var k8sExternalIPs map[string]net.IP
-	var k8sLoadBalancerIPs map[string]net.IP
+	var (
+		k8sExternalIPs     map[string]net.IP
+		k8sLoadBalancerIPs map[string]net.IP
+	)
+
+	loadBalancerSourceCIDRs := make(map[string]*cidr.CIDR, len(loadBalancerSourceRanges))
+
+	for _, cidrString := range loadBalancerSourceRanges {
+		cidr, _ := cidr.ParseCIDR(cidrString)
+		loadBalancerSourceCIDRs[cidr.String()] = cidr
+	}
 
 	if option.Config.EnableNodePort {
 		k8sExternalIPs = parseIPs(externalIPs)
@@ -365,10 +410,11 @@ func NewService(ip net.IP, externalIPs []string, loadBalancerIPs []string,
 		TrafficPolicy:       trafficPolicy,
 		HealthCheckNodePort: healthCheckNodePort,
 
-		Ports:           map[loadbalancer.FEPortName]*loadbalancer.L4Addr{},
-		NodePorts:       map[loadbalancer.FEPortName]map[string]*loadbalancer.L3n4AddrID{},
-		K8sExternalIPs:  k8sExternalIPs,
-		LoadBalancerIPs: k8sLoadBalancerIPs,
+		Ports:                    map[loadbalancer.FEPortName]*loadbalancer.L4Addr{},
+		NodePorts:                map[loadbalancer.FEPortName]map[string]*loadbalancer.L3n4AddrID{},
+		K8sExternalIPs:           k8sExternalIPs,
+		LoadBalancerIPs:          k8sLoadBalancerIPs,
+		LoadBalancerSourceRanges: loadBalancerSourceCIDRs,
 
 		Labels:   labels,
 		Selector: selector,

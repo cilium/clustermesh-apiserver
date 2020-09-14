@@ -2,6 +2,8 @@
 github.com/PuerkitoBio/purell
 # github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578
 github.com/PuerkitoBio/urlesc
+# github.com/StackExchange/wmi v0.0.0-20170410192909-ea383cf3ba6e
+github.com/StackExchange/wmi
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
 # github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496
@@ -12,7 +14,7 @@ github.com/beorn7/perks/quantile
 github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.0
 github.com/cespare/xxhash/v2
-# github.com/cilium/cilium v1.7.0-rc2.0.20200414081415-afc48b73b65a
+# github.com/cilium/cilium v1.8.3
 ## explicit
 github.com/cilium/cilium/api/v1/client
 github.com/cilium/cilium/api/v1/client/daemon
@@ -27,8 +29,7 @@ github.com/cilium/cilium/api/v1/health/client/connectivity
 github.com/cilium/cilium/api/v1/health/client/restapi
 github.com/cilium/cilium/api/v1/health/models
 github.com/cilium/cilium/api/v1/models
-github.com/cilium/cilium/common
-github.com/cilium/cilium/common/addressing
+github.com/cilium/cilium/pkg/addressing
 github.com/cilium/cilium/pkg/allocator
 github.com/cilium/cilium/pkg/annotation
 github.com/cilium/cilium/pkg/api
@@ -38,11 +39,15 @@ github.com/cilium/cilium/pkg/backoff
 github.com/cilium/cilium/pkg/byteorder
 github.com/cilium/cilium/pkg/cidr
 github.com/cilium/cilium/pkg/client
+github.com/cilium/cilium/pkg/clustermesh/types
+github.com/cilium/cilium/pkg/common
 github.com/cilium/cilium/pkg/comparator
 github.com/cilium/cilium/pkg/components
+github.com/cilium/cilium/pkg/contexthelpers
 github.com/cilium/cilium/pkg/controller
 github.com/cilium/cilium/pkg/datapath
 github.com/cilium/cilium/pkg/datapath/loader/metrics
+github.com/cilium/cilium/pkg/datapath/option
 github.com/cilium/cilium/pkg/debug
 github.com/cilium/cilium/pkg/defaults
 github.com/cilium/cilium/pkg/endpoint/id
@@ -50,25 +55,42 @@ github.com/cilium/cilium/pkg/eventqueue
 github.com/cilium/cilium/pkg/fqdn/matchpattern
 github.com/cilium/cilium/pkg/health/client
 github.com/cilium/cilium/pkg/health/defaults
-github.com/cilium/cilium/pkg/hubble/ipcache
+github.com/cilium/cilium/pkg/iana
 github.com/cilium/cilium/pkg/identity
 github.com/cilium/cilium/pkg/identity/cache
 github.com/cilium/cilium/pkg/identity/identitymanager
 github.com/cilium/cilium/pkg/identity/model
 github.com/cilium/cilium/pkg/idpool
 github.com/cilium/cilium/pkg/ip
+github.com/cilium/cilium/pkg/ipam/option
 github.com/cilium/cilium/pkg/ipam/types
 github.com/cilium/cilium/pkg/ipcache
 github.com/cilium/cilium/pkg/k8s
 github.com/cilium/cilium/pkg/k8s/apis/cilium.io
 github.com/cilium/cilium/pkg/k8s/apis/cilium.io/utils
 github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2
+github.com/cilium/cilium/pkg/k8s/apis/cilium.io/v2/client
 github.com/cilium/cilium/pkg/k8s/client/clientset/versioned
 github.com/cilium/cilium/pkg/k8s/client/clientset/versioned/scheme
 github.com/cilium/cilium/pkg/k8s/client/clientset/versioned/typed/cilium.io/v2
+github.com/cilium/cilium/pkg/k8s/config
+github.com/cilium/cilium/pkg/k8s/constants
 github.com/cilium/cilium/pkg/k8s/identitybackend
 github.com/cilium/cilium/pkg/k8s/informer
 github.com/cilium/cilium/pkg/k8s/metrics
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/discovery/v1beta1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/labels
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1/validation
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/networking/v1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/selection
+github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/util/intstr
+github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned/scheme
+github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned/typed/core/v1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned/typed/discovery/v1beta1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/client/clientset/versioned/typed/networking/v1
+github.com/cilium/cilium/pkg/k8s/slim/k8s/clientset
 github.com/cilium/cilium/pkg/k8s/types
 github.com/cilium/cilium/pkg/k8s/utils
 github.com/cilium/cilium/pkg/k8s/version
@@ -87,10 +109,13 @@ github.com/cilium/cilium/pkg/mtu
 github.com/cilium/cilium/pkg/node
 github.com/cilium/cilium/pkg/node/addressing
 github.com/cilium/cilium/pkg/node/store
+github.com/cilium/cilium/pkg/node/types
 github.com/cilium/cilium/pkg/option
 github.com/cilium/cilium/pkg/policy
 github.com/cilium/cilium/pkg/policy/api
 github.com/cilium/cilium/pkg/policy/trafficdirection
+github.com/cilium/cilium/pkg/rand
+github.com/cilium/cilium/pkg/rate
 github.com/cilium/cilium/pkg/safetime
 github.com/cilium/cilium/pkg/service/store
 github.com/cilium/cilium/pkg/source
@@ -124,8 +149,11 @@ github.com/coreos/pkg/capnslog
 github.com/davecgh/go-spew/spew
 # github.com/envoyproxy/protoc-gen-validate v0.3.0-java
 github.com/envoyproxy/protoc-gen-validate/validate
-# github.com/fsnotify/fsnotify v1.4.7
+# github.com/fsnotify/fsnotify v1.4.10-0.20200417215612-7f4cf4dd2b52
 github.com/fsnotify/fsnotify
+# github.com/go-ole/go-ole v1.2.1
+github.com/go-ole/go-ole
+github.com/go-ole/go-ole/oleutil
 # github.com/go-openapi/analysis v0.19.10
 github.com/go-openapi/analysis
 github.com/go-openapi/analysis/internal
@@ -171,7 +199,7 @@ github.com/golang/protobuf/ptypes/empty
 github.com/golang/protobuf/ptypes/struct
 github.com/golang/protobuf/ptypes/timestamp
 github.com/golang/protobuf/ptypes/wrappers
-# github.com/google/go-cmp v0.3.1
+# github.com/google/go-cmp v0.4.0
 github.com/google/go-cmp/cmp
 github.com/google/go-cmp/cmp/internal/diff
 github.com/google/go-cmp/cmp/internal/flags
@@ -252,6 +280,8 @@ github.com/pborman/uuid
 github.com/pelletier/go-toml
 # github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5
 github.com/petermattis/goid
+# github.com/pkg/errors v0.8.1
+github.com/pkg/errors
 # github.com/pmezard/go-difflib v1.0.0
 github.com/pmezard/go-difflib/difflib
 # github.com/prometheus/client_golang v1.2.0
@@ -270,6 +300,9 @@ github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
 # github.com/sasha-s/go-deadlock v0.2.1-0.20190427202633-1595213edefa
 github.com/sasha-s/go-deadlock
+# github.com/shirou/gopsutil v0.0.0-20180427012116-c95755e4bcd7
+github.com/shirou/gopsutil/internal/common
+github.com/shirou/gopsutil/mem
 # github.com/sirupsen/logrus v1.4.2
 ## explicit
 github.com/sirupsen/logrus
@@ -279,7 +312,7 @@ github.com/spf13/afero
 github.com/spf13/afero/mem
 # github.com/spf13/cast v1.3.0
 github.com/spf13/cast
-# github.com/spf13/cobra v0.0.5
+# github.com/spf13/cobra v1.0.0
 ## explicit
 github.com/spf13/cobra
 # github.com/spf13/jwalterweatherman v1.0.0
@@ -290,7 +323,7 @@ github.com/spf13/pflag
 github.com/spf13/viper
 # github.com/subosito/gotenv v1.2.0
 github.com/subosito/gotenv
-# github.com/vishvananda/netlink v1.1.1-0.20200210222539-bfba8e4149db
+# github.com/vishvananda/netlink v1.1.1-0.20200603190939-5a869a71f0cb
 github.com/vishvananda/netlink
 github.com/vishvananda/netlink/nl
 # github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df
@@ -358,8 +391,9 @@ golang.org/x/net/trace
 golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
+golang.org/x/sync/errgroup
 golang.org/x/sync/semaphore
-# golang.org/x/sys v0.0.0-20200202164722-d101bd2416d5
+# golang.org/x/sys v0.0.0-20200420163511-1957bb5e6d1f
 ## explicit
 golang.org/x/sys/unix
 golang.org/x/sys/windows
@@ -427,7 +461,7 @@ gopkg.in/inf.v0
 gopkg.in/ini.v1
 # gopkg.in/yaml.v2 v2.2.8
 gopkg.in/yaml.v2
-# k8s.io/api v0.18.0
+# k8s.io/api v0.18.8
 ## explicit
 k8s.io/api/admissionregistration/v1
 k8s.io/api/admissionregistration/v1beta1
@@ -469,7 +503,7 @@ k8s.io/api/settings/v1alpha1
 k8s.io/api/storage/v1
 k8s.io/api/storage/v1alpha1
 k8s.io/api/storage/v1beta1
-# k8s.io/apiextensions-apiserver v0.18.0
+# k8s.io/apiextensions-apiserver v0.18.8
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1
@@ -477,7 +511,7 @@ k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/scheme
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1
 k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset/typed/apiextensions/v1beta1
-# k8s.io/apimachinery v0.18.0
+# k8s.io/apimachinery v0.18.8
 ## explicit
 k8s.io/apimachinery/pkg/api/equality
 k8s.io/apimachinery/pkg/api/errors
@@ -486,7 +520,6 @@ k8s.io/apimachinery/pkg/api/resource
 k8s.io/apimachinery/pkg/apis/meta/internalversion
 k8s.io/apimachinery/pkg/apis/meta/v1
 k8s.io/apimachinery/pkg/apis/meta/v1/unstructured
-k8s.io/apimachinery/pkg/apis/meta/v1/validation
 k8s.io/apimachinery/pkg/apis/meta/v1beta1
 k8s.io/apimachinery/pkg/conversion
 k8s.io/apimachinery/pkg/conversion/queryparams
@@ -520,7 +553,7 @@ k8s.io/apimachinery/pkg/util/yaml
 k8s.io/apimachinery/pkg/version
 k8s.io/apimachinery/pkg/watch
 k8s.io/apimachinery/third_party/forked/golang/reflect
-# k8s.io/client-go v0.18.0 => github.com/cilium/client-go v0.0.0-20200326103132-fe7bd31c2794
+# k8s.io/client-go v0.18.8 => github.com/cilium/client-go v0.0.0-20200813235008-6b28ea7c1c4e
 ## explicit
 k8s.io/client-go/discovery
 k8s.io/client-go/kubernetes
@@ -601,4 +634,4 @@ sigs.k8s.io/structured-merge-diff/v3/value
 sigs.k8s.io/yaml
 # github.com/miekg/dns => github.com/cilium/dns v1.1.4-0.20190417235132-8e25ec9a0ff3
 # github.com/optiopay/kafka => github.com/cilium/kafka v0.0.0-20180809090225-01ce283b732b
-# k8s.io/client-go => github.com/cilium/client-go v0.0.0-20200326103132-fe7bd31c2794
+# k8s.io/client-go => github.com/cilium/client-go v0.0.0-20200813235008-6b28ea7c1c4e

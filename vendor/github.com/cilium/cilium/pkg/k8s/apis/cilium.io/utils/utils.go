@@ -16,13 +16,13 @@ package utils
 
 import (
 	k8sConst "github.com/cilium/cilium/pkg/k8s/apis/cilium.io"
+	slim_metav1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/meta/v1"
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/policy/api"
 
 	"github.com/sirupsen/logrus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -77,7 +77,7 @@ func GetPolicyLabels(ns, name string, uid types.UID, derivedFrom string) labels.
 // adding the relevant matches for namespaces based on the provided options.
 // If no namespace is provided then it is assumed that the selector is global to the cluster
 // this is when translating selectors for CiliumClusterwideNetworkPolicy.
-func getEndpointSelector(namespace string, labelSelector *metav1.LabelSelector, addK8sPrefix, matchesInit bool) api.EndpointSelector {
+func getEndpointSelector(namespace string, labelSelector *slim_metav1.LabelSelector, addK8sPrefix, matchesInit bool) api.EndpointSelector {
 	es := api.NewESFromK8sLabelSelector("", labelSelector)
 
 	// The k8s prefix must not be added to reserved labels.
@@ -101,7 +101,7 @@ func getEndpointSelector(namespace string, labelSelector *metav1.LabelSelector, 
 }
 
 func parseToCiliumIngressRule(namespace string, inRule, retRule *api.Rule) {
-	matchesInit := retRule.EndpointSelector.HasKey(podInitLbl)
+	matchesInit := matchesPodInit(retRule.EndpointSelector)
 
 	if inRule.Ingress != nil {
 		retRule.Ingress = make([]api.IngressRule, len(inRule.Ingress))
@@ -145,7 +145,7 @@ func parseToCiliumIngressRule(namespace string, inRule, retRule *api.Rule) {
 }
 
 func parseToCiliumEgressRule(namespace string, inRule, retRule *api.Rule) {
-	matchesInit := retRule.EndpointSelector.HasKey(podInitLbl)
+	matchesInit := matchesPodInit(retRule.EndpointSelector)
 
 	if inRule.Egress != nil {
 		retRule.Egress = make([]api.EgressRule, len(inRule.Egress))
@@ -204,6 +204,13 @@ func parseToCiliumEgressRule(namespace string, inRule, retRule *api.Rule) {
 	}
 }
 
+func matchesPodInit(epSelector api.EndpointSelector) bool {
+	if epSelector.LabelSelector == nil {
+		return false
+	}
+	return epSelector.HasKey(podInitLbl)
+}
+
 // namespacesAreValid checks the set of namespaces from a rule returns true if
 // they are not specified, or if they are specified and match the namespace
 // where the rule is being inserted.
@@ -240,6 +247,8 @@ func ParseToCiliumRule(namespace, name string, uid types.UID, r *api.Rule) *api.
 			}
 			retRule.EndpointSelector.AddMatch(podPrefixLbl, namespace)
 		}
+	} else if r.NodeSelector.LabelSelector != nil {
+		retRule.NodeSelector = api.NewESFromK8sLabelSelector("", r.NodeSelector.LabelSelector)
 	}
 
 	parseToCiliumIngressRule(namespace, r, retRule)

@@ -33,7 +33,7 @@ import (
 	"github.com/cilium/cilium/pkg/kvstore"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/metrics"
-	"github.com/cilium/cilium/pkg/node"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/spanstat"
 
@@ -350,10 +350,8 @@ func (c *CNPStatusUpdateContext) updateViaKVStore(ctx context.Context, cnp *type
 		annotations map[string]string
 	)
 
-	select {
-	case <-kvstore.Client().Connected(ctx):
-	case <-ctx.Done():
-		return ctx.Err()
+	if err := <-kvstore.Client().Connected(ctx); err != nil {
+		return fmt.Errorf("kvstore is unavailable: %w", err)
 	}
 
 	capabilities := k8sversion.Capabilities()
@@ -393,7 +391,7 @@ func (c *CNPStatusUpdateContext) updateViaKVStore(ctx context.Context, cnp *type
 		Namespace:                     cnp.GetNamespace(),
 		UID:                           cnp.GetUID(),
 		CiliumNetworkPolicyNodeStatus: cnpns,
-		Node:                          node.GetName(),
+		Node:                          nodeTypes.GetName(),
 	}
 	marshaledVal, err := json.Marshal(cnpWithMeta)
 	if err != nil {
@@ -403,7 +401,7 @@ func (c *CNPStatusUpdateContext) updateViaKVStore(ctx context.Context, cnp *type
 	// If the namespace is empty it means that the policy is clusterwide policy.
 	// This is then taken care of internally when we try to join the path using
 	// golangs `path.Join`
-	key := formatKeyNodeForKvstore(cnp.GetObjectMeta(), node.GetName())
+	key := formatKeyNodeForKvstore(cnp.GetObjectMeta(), nodeTypes.GetName())
 	log.WithFields(logrus.Fields{
 		"key":   key,
 		"value": marshaledVal,

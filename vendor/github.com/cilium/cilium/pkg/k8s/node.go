@@ -24,15 +24,15 @@ import (
 	"github.com/cilium/cilium/pkg/annotation"
 	"github.com/cilium/cilium/pkg/cidr"
 	"github.com/cilium/cilium/pkg/controller"
-	"github.com/cilium/cilium/pkg/k8s/types"
+	slim_corev1 "github.com/cilium/cilium/pkg/k8s/slim/k8s/apis/core/v1"
 	"github.com/cilium/cilium/pkg/logging/logfields"
-	"github.com/cilium/cilium/pkg/node"
 	"github.com/cilium/cilium/pkg/node/addressing"
+	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/source"
 
 	"github.com/sirupsen/logrus"
-	"k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -40,7 +40,7 @@ import (
 // ParseNodeAddressType converts a Kubernetes NodeAddressType to a Cilium
 // NodeAddressType. If the Kubernetes NodeAddressType does not have a
 // corresponding Cilium AddressType, returns an error.
-func ParseNodeAddressType(k8sAddress v1.NodeAddressType) (addressing.AddressType, error) {
+func ParseNodeAddressType(k8sAddress slim_corev1.NodeAddressType) (addressing.AddressType, error) {
 
 	var err error
 	convertedAddr := addressing.AddressType(k8sAddress)
@@ -54,22 +54,22 @@ func ParseNodeAddressType(k8sAddress v1.NodeAddressType) (addressing.AddressType
 }
 
 // ParseNode parses a kubernetes node to a cilium node
-func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
+func ParseNode(k8sNode *slim_corev1.Node, source source.Source) *nodeTypes.Node {
 	scopedLog := log.WithFields(logrus.Fields{
 		logfields.NodeName:  k8sNode.Name,
 		logfields.K8sNodeID: k8sNode.UID,
 	})
-	addrs := []node.Address{}
-	for _, addr := range k8sNode.StatusAddresses {
+	addrs := []nodeTypes.Address{}
+	for _, addr := range k8sNode.Status.Addresses {
 		// We only care about this address types,
 		// we ignore all other types.
 		switch addr.Type {
-		case v1.NodeInternalIP, v1.NodeExternalIP:
+		case slim_corev1.NodeInternalIP, slim_corev1.NodeExternalIP:
 		default:
 			continue
 		}
 		// If the address is not set let's not parse it at all.
-		// This can be the case for v1.NodeExternalIPs
+		// This can be the case for corev1.NodeExternalIPs
 		if addr.Address == "" {
 			continue
 		}
@@ -88,7 +88,7 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 			scopedLog.WithError(err).Warn("invalid address type for node")
 		}
 
-		na := node.Address{
+		na := nodeTypes.Address{
 			Type: addressType,
 			IP:   ip,
 		}
@@ -101,7 +101,7 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 		} else if ip := net.ParseIP(ciliumInternalIP); ip == nil {
 			scopedLog.Debugf("ParseIP %s error", ciliumInternalIP)
 		} else {
-			na := node.Address{
+			na := nodeTypes.Address{
 				Type: addressing.NodeCiliumInternalIP,
 				IP:   ip,
 			}
@@ -120,7 +120,7 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 		}
 	}
 
-	newNode := &node.Node{
+	newNode := &nodeTypes.Node{
 		Name:          k8sNode.Name,
 		Cluster:       option.Config.ClusterName,
 		IPAddresses:   addrs,
@@ -128,13 +128,13 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 		EncryptionKey: encryptKey,
 	}
 
-	if len(k8sNode.SpecPodCIDRs) != 0 {
-		if len(k8sNode.SpecPodCIDRs) > 2 {
-			scopedLog.WithField("podCIDR", k8sNode.SpecPodCIDRs).Errorf("Invalid PodCIDRs expected 1 or 2 PodCIDRs, received %d", len(k8sNode.SpecPodCIDRs))
+	if len(k8sNode.Spec.PodCIDRs) != 0 {
+		if len(k8sNode.Spec.PodCIDRs) > 2 {
+			scopedLog.WithField("podCIDR", k8sNode.Spec.PodCIDRs).Errorf("Invalid PodCIDRs expected 1 or 2 PodCIDRs, received %d", len(k8sNode.Spec.PodCIDRs))
 		} else {
-			for _, podCIDR := range k8sNode.SpecPodCIDRs {
+			for _, podCIDR := range k8sNode.Spec.PodCIDRs {
 				if allocCIDR, err := cidr.ParseCIDR(podCIDR); err != nil {
-					scopedLog.WithError(err).WithField("podCIDR", k8sNode.SpecPodCIDR).Warn("Invalid PodCIDR value for node")
+					scopedLog.WithError(err).WithField("podCIDR", k8sNode.Spec.PodCIDR).Warn("Invalid PodCIDR value for node")
 				} else {
 					if allocCIDR.IP.To4() != nil {
 						newNode.IPv4AllocCIDR = allocCIDR
@@ -144,9 +144,9 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 				}
 			}
 		}
-	} else if len(k8sNode.SpecPodCIDR) != 0 {
-		if allocCIDR, err := cidr.ParseCIDR(k8sNode.SpecPodCIDR); err != nil {
-			scopedLog.WithError(err).WithField(logfields.V4Prefix, k8sNode.SpecPodCIDR).Warn("Invalid PodCIDR value for node")
+	} else if len(k8sNode.Spec.PodCIDR) != 0 {
+		if allocCIDR, err := cidr.ParseCIDR(k8sNode.Spec.PodCIDR); err != nil {
+			scopedLog.WithError(err).WithField(logfields.V4Prefix, k8sNode.Spec.PodCIDR).Warn("Invalid PodCIDR value for node")
 		} else {
 			if allocCIDR.IP.To4() != nil {
 				newNode.IPv4AllocCIDR = allocCIDR
@@ -204,12 +204,14 @@ func ParseNode(k8sNode *types.Node, source source.Source) *node.Node {
 		}
 	}
 
+	newNode.Labels = k8sNode.GetLabels()
+
 	return newNode
 }
 
 // GetNode returns the kubernetes nodeName's node information from the
 // kubernetes api server
-func GetNode(c kubernetes.Interface, nodeName string) (*v1.Node, error) {
+func GetNode(c kubernetes.Interface, nodeName string) (*corev1.Node, error) {
 	// Try to retrieve node's cidr and addresses from k8s's configuration
 	return c.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 }
@@ -218,15 +220,15 @@ func GetNode(c kubernetes.Interface, nodeName string) (*v1.Node, error) {
 // false as Cilium is managing the network connectivity.
 // https://kubernetes.io/docs/concepts/architecture/nodes/#condition
 func setNodeNetworkUnavailableFalse(c kubernetes.Interface, nodeName string) error {
-	condition := v1.NodeCondition{
-		Type:               v1.NodeNetworkUnavailable,
-		Status:             v1.ConditionFalse,
+	condition := corev1.NodeCondition{
+		Type:               corev1.NodeNetworkUnavailable,
+		Status:             corev1.ConditionFalse,
 		Reason:             "CiliumIsUp",
 		Message:            "Cilium is running on this node",
 		LastTransitionTime: metav1.Now(),
 		LastHeartbeatTime:  metav1.Now(),
 	}
-	raw, err := json.Marshal(&[]v1.NodeCondition{condition})
+	raw, err := json.Marshal(&[]corev1.NodeCondition{condition})
 	if err != nil {
 		return err
 	}

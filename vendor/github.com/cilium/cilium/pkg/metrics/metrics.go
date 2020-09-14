@@ -72,6 +72,9 @@ const (
 	// names and separated with a '_'
 	Namespace = "cilium"
 
+	// LabelError indicates the type of error (string)
+	LabelError = "error"
+
 	// LabelOutcome indicates whether the outcome of the operation was successful or not
 	LabelOutcome = "outcome"
 
@@ -369,6 +372,9 @@ var (
 	// received event was blocked before it could be queued
 	KVStoreEventsQueueDuration = NoOpObserverVec
 
+	// KVStoreQuorumErrors records the number of kvstore quorum errors
+	KVStoreQuorumErrors = NoOpCounterVec
+
 	// FQDNGarbageCollectorCleanedTotal is the number of domains cleaned by the
 	// GC job.
 	FQDNGarbageCollectorCleanedTotal = NoOpCounter
@@ -442,6 +448,7 @@ type Configuration struct {
 	IpamEventEnabled                        bool
 	KVStoreOperationsDurationEnabled        bool
 	KVStoreEventsQueueDurationEnabled       bool
+	KVStoreQuorumErrorsEnabled              bool
 	FQDNGarbageCollectorCleanedTotalEnabled bool
 	BPFSyscallDurationEnabled               bool
 	BPFMapOps                               bool
@@ -496,6 +503,7 @@ func DefaultMetrics() map[string]struct{} {
 		Namespace + "_ipam_events_total":                                             {},
 		Namespace + "_" + SubsystemKVStore + "_operations_duration_seconds":          {},
 		Namespace + "_" + SubsystemKVStore + "_events_queue_seconds":                 {},
+		Namespace + "_" + SubsystemKVStore + "_quorum_errors_total":                  {},
 		Namespace + "_fqdn_gc_deletions_total":                                       {},
 		Namespace + "_" + SubsystemBPF + "_map_ops_total":                            {},
 		Namespace + "_" + SubsystemTriggers + "_policy_update_total":                 {},
@@ -990,6 +998,17 @@ func CreateConfiguration(metricsEnabled []string) (Configuration, []prometheus.C
 			collectors = append(collectors, KVStoreEventsQueueDuration)
 			c.KVStoreEventsQueueDurationEnabled = true
 
+		case Namespace + "_" + SubsystemKVStore + "_quorum_errors_total":
+			KVStoreQuorumErrors = prometheus.NewCounterVec(prometheus.CounterOpts{
+				Namespace: Namespace,
+				Subsystem: SubsystemKVStore,
+				Name:      "quorum_errors_total",
+				Help:      "Number of quorum errors",
+			}, []string{LabelError})
+
+			collectors = append(collectors, KVStoreQuorumErrors)
+			c.KVStoreQuorumErrorsEnabled = true
+
 		case Namespace + "_fqdn_gc_deletions_total":
 			FQDNGarbageCollectorCleanedTotal = prometheus.NewCounter(prometheus.CounterOpts{
 				Namespace: Namespace,
@@ -1077,6 +1096,7 @@ func init() {
 	// TODO: Figure out how to put this into a Namespace
 	// MustRegister(prometheus.NewGoCollector())
 	MustRegister(newStatusCollector())
+	MustRegister(newbpfCollector())
 }
 
 // MustRegister adds the collector to the registry, exposing this metric to
@@ -1123,8 +1143,13 @@ func Enable(addr string) <-chan error {
 	go func() {
 		// The Handler function provides a default handler to expose metrics
 		// via an HTTP server. "/metrics" is the usual endpoint for that.
-		http.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-		errs <- http.ListenAndServe(addr, nil)
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+		srv := http.Server{
+			Addr:    addr,
+			Handler: mux,
+		}
+		errs <- srv.ListenAndServe()
 	}()
 
 	return errs
@@ -1137,6 +1162,17 @@ func GetCounterValue(m prometheus.Counter) float64 {
 	err := m.Write(&pm)
 	if err == nil {
 		return *pm.Counter.Value
+	}
+	return 0
+}
+
+// GetGaugeValue returns the current value stored for the gauge. This function
+// is useful in tests.
+func GetGaugeValue(m prometheus.Gauge) float64 {
+	var pm dto.Metric
+	err := m.Write(&pm)
+	if err == nil {
+		return *pm.Gauge.Value
 	}
 	return 0
 }

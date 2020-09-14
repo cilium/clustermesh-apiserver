@@ -23,6 +23,7 @@ import (
 	"github.com/cilium/cilium/api/v1/models"
 	eniTypes "github.com/cilium/cilium/pkg/aws/eni/types"
 	azureTypes "github.com/cilium/cilium/pkg/azure/types"
+	"github.com/cilium/cilium/pkg/comparator"
 	ipamTypes "github.com/cilium/cilium/pkg/ipam/types"
 	k8sConst "github.com/cilium/cilium/pkg/k8s/apis/cilium.io"
 	k8sCiliumUtils "github.com/cilium/cilium/pkg/k8s/apis/cilium.io/utils"
@@ -34,6 +35,7 @@ import (
 	"github.com/cilium/cilium/pkg/policy/api"
 
 	"github.com/go-openapi/swag"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -52,10 +54,13 @@ var (
 
 // CiliumNetworkPolicy is a Kubernetes third-party resource with an extended version
 // of NetworkPolicy
+// +deepequal-gen:private-method=true
 type CiliumNetworkPolicy struct {
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.TypeMeta `json:",inline"`
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.ObjectMeta `json:"metadata"`
 
 	// Spec is the desired Cilium specific rule specification.
@@ -66,10 +71,44 @@ type CiliumNetworkPolicy struct {
 
 	// Status is the status of the Cilium policy rule
 	// +optional
+	// +deepequal-gen=false
 	Status CiliumNetworkPolicyStatus `json:"status"`
 }
 
+// DeepEqual compares 2 CNPs while ignoring the LastAppliedConfigAnnotation and
+// ignoring the Status field of the CNP.
+func (in *CiliumNetworkPolicy) DeepEqual(other *CiliumNetworkPolicy) bool {
+	switch {
+	case (in == nil) != (other == nil):
+		return false
+	case (in == nil) && (other == nil):
+		return true
+	}
+
+	if !(in.Name == other.Name && in.Namespace == other.Namespace) {
+		return false
+	}
+
+	// Ignore v1.LastAppliedConfigAnnotation annotation
+	lastAppliedCfgAnnotation1, ok1 := in.GetAnnotations()[v1.LastAppliedConfigAnnotation]
+	lastAppliedCfgAnnotation2, ok2 := other.GetAnnotations()[v1.LastAppliedConfigAnnotation]
+	defer func() {
+		if ok1 && in.GetAnnotations() != nil {
+			in.GetAnnotations()[v1.LastAppliedConfigAnnotation] = lastAppliedCfgAnnotation1
+		}
+		if ok2 && other.GetAnnotations() != nil {
+			other.GetAnnotations()[v1.LastAppliedConfigAnnotation] = lastAppliedCfgAnnotation2
+		}
+	}()
+	delete(in.GetAnnotations(), v1.LastAppliedConfigAnnotation)
+	delete(other.GetAnnotations(), v1.LastAppliedConfigAnnotation)
+
+	return comparator.MapStringEquals(in.GetAnnotations(), other.GetAnnotations()) &&
+		in.deepEqual(other)
+}
+
 // CiliumNetworkPolicyStatus is the status of a Cilium policy rule
+// +deepequal-gen=true
 type CiliumNetworkPolicyStatus struct {
 	// Nodes is the Cilium policy status for each node
 	Nodes map[string]CiliumNetworkPolicyNodeStatus `json:"nodes,omitempty"`
@@ -81,6 +120,7 @@ type CiliumNetworkPolicyStatus struct {
 
 // CiliumNetworkPolicyNodeStatus is the status of a Cilium policy rule for a
 // specific node
+// +deepequal-gen=true
 type CiliumNetworkPolicyNodeStatus struct {
 	// OK is true when the policy has been parsed and imported successfully
 	// into the in-memory policy repository on the node.
@@ -134,8 +174,19 @@ func NewTimestamp() Timestamp {
 
 // Timestamp is a wrapper of time.Time so that we can create our own
 // implementation of DeepCopyInto.
+// +deepequal-gen=false
 type Timestamp struct {
 	time.Time
+}
+
+func (in *Timestamp) DeepEqual(other *Timestamp) bool {
+	switch {
+	case (in == nil) != (other == nil):
+		return false
+	case (in == nil) && (other == nil):
+		return true
+	}
+	return in.Time.Equal(other.Time)
 }
 
 // DeepCopyInto creates a deep-copy of the Time value.  The underlying time.Time
@@ -186,14 +237,6 @@ func (r *CiliumNetworkPolicy) SetDerivedPolicyStatus(derivativePolicyName string
 	r.Status.DerivativePolicies[derivativePolicyName] = status
 }
 
-// SpecEquals returns true if the spec and specs metadata is the sa
-func (r *CiliumNetworkPolicy) SpecEquals(o *CiliumNetworkPolicy) bool {
-	if o == nil {
-		return r == nil
-	}
-	return r.Spec.DeepEquals(o.Spec) && r.Specs.DeepEquals(o.Specs)
-}
-
 // AnnotationsEquals returns true if ObjectMeta.Annotations of each
 // CiliumNetworkPolicy are equivalent (i.e., they contain equivalent key-value
 // pairs).
@@ -220,7 +263,6 @@ func (r *CiliumNetworkPolicy) Parse() (api.Rules, error) {
 	if r.Spec != nil {
 		if err := r.Spec.Sanitize(); err != nil {
 			return nil, fmt.Errorf("Invalid CiliumNetworkPolicy spec: %s", err)
-
 		}
 		cr := k8sCiliumUtils.ParseToCiliumRule(namespace, name, uid, r.Spec)
 		retRules = append(retRules, cr)
@@ -283,6 +325,7 @@ func (r *CiliumNetworkPolicy) RequiresDerivative() bool {
 
 // CiliumNetworkPolicyList is a list of CiliumNetworkPolicy objects
 // +k8s:openapi-gen=false
+// +deepequal-gen=false
 type CiliumNetworkPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -297,6 +340,7 @@ type CiliumNetworkPolicyList struct {
 
 // CiliumClusterwideNetworkPolicy is a Kubernetes third-party resource with an modified version
 // of CiliumNetworkPolicy which is cluster scoped rather than namespace scoped.
+// +deepequal-gen=false
 type CiliumClusterwideNetworkPolicy struct {
 	*CiliumNetworkPolicy
 
@@ -312,6 +356,7 @@ type CiliumClusterwideNetworkPolicy struct {
 
 // CiliumClusterwideNetworkPolicyList is a list of CiliumClusterwideNetworkPolicy objects
 // +k8s:openapi-gen=false
+// +deepequal-gen=false
 type CiliumClusterwideNetworkPolicyList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -327,8 +372,10 @@ type CiliumClusterwideNetworkPolicyList struct {
 // +k8s:openapi-gen=false
 type CiliumEndpoint struct {
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.TypeMeta `json:",inline"`
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.ObjectMeta `json:"metadata"`
 
 	Status EndpointStatus `json:"status"`
@@ -387,6 +434,8 @@ type EndpointStatus struct {
 	// - disconnecting
 	// - disconnected
 	State string `json:"state,omitempty"`
+
+	NamedPorts models.NamedPorts `json:"named-ports,omitempty"`
 }
 
 // EndpointStatusLogEntries is the maximum number of log entries in EndpointStatus.Log
@@ -509,17 +558,24 @@ type EndpointIdentity struct {
 // users of this identity, and to expire stale usage.
 type CiliumIdentity struct {
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.TypeMeta `json:",inline"`
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.ObjectMeta `json:"metadata"`
 
 	// SecurityLabels is the source-of-truth set of labels for this identity.
 	SecurityLabels map[string]string `json:"security-labels"`
 
+	// Status is deprecated and no longer used, it will be removed in Cilium 1.9
+	// +deepequal-gen=false
 	Status IdentityStatus `json:"status"`
 }
 
 // IdentityStatus is the status of an identity
+//
+// This structure is deprecated, do not use.
+// +deepequal-gen=false
 type IdentityStatus struct {
 	Nodes map[string]metav1.Time `json:"nodes,omitempty"`
 }
@@ -527,6 +583,7 @@ type IdentityStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 //
 // CiliumIdentityList is a list of CiliumIdentity objects
+// +deepequal-gen=false
 type CiliumIdentityList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -606,6 +663,7 @@ func (m *EndpointStatus) UnmarshalBinary(b []byte) error {
 
 // CiliumEndpointList is a list of CiliumEndpoint objects
 // +k8s:openapi-gen=false
+// +deepequal-gen=false
 type CiliumEndpointList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`
@@ -623,8 +681,10 @@ type CiliumEndpointList struct {
 // to represent the status of the node
 type CiliumNode struct {
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.TypeMeta `json:",inline"`
 	// +k8s:openapi-gen=false
+	// +deepequal-gen=false
 	metav1.ObjectMeta `json:"metadata"`
 
 	// Spec defines the desired specification/configuration of the node
@@ -730,6 +790,7 @@ type NodeStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 //
 // CiliumNodeList is a list of CiliumNode objects
+// +deepequal-gen=false
 type CiliumNodeList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata"`

@@ -42,6 +42,9 @@ type ExtraOptions struct {
 	// ClusterSizeDependantInterval defines the function to calculate
 	// intervals based on cluster size
 	ClusterSizeDependantInterval func(baseInterval time.Duration) time.Duration
+
+	// NoLockQuorumCheck disables the lock acquisition quorum check
+	NoLockQuorumCheck bool
 }
 
 // StatusCheckInterval returns the interval of status checks depending on the
@@ -127,8 +130,8 @@ func getBackend(name string) backendModule {
 // tracing layer.
 type BackendOperations interface {
 	// Connected returns a channel which is closed whenever the kvstore client
-	// is connected to the kvstore server. (Only implemented for etcd)
-	Connected(ctx context.Context) <-chan struct{}
+	// is connected to the kvstore server.
+	Connected(ctx context.Context) <-chan error
 
 	// Disconnected returns a channel which is closed whenever the kvstore
 	// client is not connected to the kvstore server. (Only implemented for etcd)
@@ -137,6 +140,10 @@ type BackendOperations interface {
 	// Status returns the status of the kvstore client including an
 	// eventual error
 	Status() (string, error)
+
+	// StatusCheckErrors returns a channel which receives status check
+	// errors
+	StatusCheckErrors() <-chan error
 
 	// LockPath locks the provided path
 	LockPath(ctx context.Context, path string) (KVLocker, error)

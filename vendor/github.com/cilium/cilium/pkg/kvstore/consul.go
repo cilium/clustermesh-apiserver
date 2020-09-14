@@ -178,11 +178,12 @@ var (
 
 type consulClient struct {
 	*consulAPI.Client
-	lease          string
-	controllers    *controller.Manager
-	extraOptions   *ExtraOptions
-	disconnectedMu lock.RWMutex
-	disconnected   chan struct{}
+	lease             string
+	controllers       *controller.Manager
+	extraOptions      *ExtraOptions
+	disconnectedMu    lock.RWMutex
+	disconnected      chan struct{}
+	statusCheckErrors chan error
 }
 
 func newConsulClient(ctx context.Context, config *consulAPI.Config, opts *ExtraOptions) (BackendOperations, error) {
@@ -200,7 +201,6 @@ func newConsulClient(ctx context.Context, config *consulAPI.Config, opts *ExtraO
 	}
 
 	boff := backoff.Exponential{Min: time.Duration(100) * time.Millisecond}
-	log.Info("Waiting for consul to elect a leader")
 
 	for i := 0; i < maxRetries; i++ {
 		var leader string
@@ -214,6 +214,7 @@ func newConsulClient(ctx context.Context, config *consulAPI.Config, opts *ExtraO
 				err = errors.New("timeout while waiting for leader to be elected")
 			}
 		}
+		log.Info("Waiting for consul to elect a leader")
 		boff.Wait(ctx)
 	}
 
@@ -233,11 +234,12 @@ func newConsulClient(ctx context.Context, config *consulAPI.Config, opts *ExtraO
 	}
 
 	client := &consulClient{
-		Client:       c,
-		lease:        lease,
-		controllers:  controller.NewManager(),
-		extraOptions: opts,
-		disconnected: make(chan struct{}),
+		Client:            c,
+		lease:             lease,
+		controllers:       controller.NewManager(),
+		extraOptions:      opts,
+		disconnected:      make(chan struct{}),
+		statusCheckErrors: make(chan error, 128),
 	}
 
 	client.controllers.UpdateController(fmt.Sprintf("consul-lease-keepalive-%p", c),
@@ -284,7 +286,7 @@ func (c *consulClient) LockPath(ctx context.Context, path string) (KVLocker, err
 		switch {
 		case err != nil:
 			return nil, err
-		case ch == nil && err == nil:
+		case ch == nil:
 			Trace("Acquiring lock timed out, retrying", nil, logrus.Fields{fieldKey: path, logfields.Attempt: retries})
 		default:
 			return &ConsulLocker{Lock: lockKey}, err
@@ -419,8 +421,8 @@ func (c *consulClient) waitForInitLock(ctx context.Context) <-chan struct{} {
 }
 
 // Connected closes the returned channel when the consul client is connected.
-func (c *consulClient) Connected(ctx context.Context) <-chan struct{} {
-	ch := make(chan struct{})
+func (c *consulClient) Connected(ctx context.Context) <-chan error {
+	ch := make(chan error)
 	go func() {
 		for {
 			qo := &consulAPI.QueryOptions{}
@@ -728,6 +730,7 @@ func (c *consulClient) listPrefix(ctx context.Context, prefix string) (KeyValueP
 
 // Close closes the consul session
 func (c *consulClient) Close() {
+	close(c.statusCheckErrors)
 	if c.controllers != nil {
 		c.controllers.RemoveAll()
 	}
@@ -762,4 +765,9 @@ func (c *consulClient) ListAndWatch(ctx context.Context, name, prefix string, ch
 	go c.Watch(ctx, w)
 
 	return w
+}
+
+// StatusCheckErrors returns a channel which receives status check errors
+func (c *consulClient) StatusCheckErrors() <-chan error {
+	return c.statusCheckErrors
 }
