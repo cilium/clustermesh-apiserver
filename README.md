@@ -1,3 +1,7 @@
+# **DEPRECATED: This repository is deprecated.**
+
+The code can be found in https://github.com/cilium/cilium/tree/master/clustermesh-apiserver
+
 # API server for Cilium ClusterMesh
 
 ## Deploy the clustermesh-apiserver
